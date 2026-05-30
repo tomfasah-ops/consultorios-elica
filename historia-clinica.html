@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Historia clínica | Consultorios Elica</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="agenda-page">
+  <header class="top compact-top">
+    <h1>Historia clínica</h1>
+    <p>Ficha clínica compartida del paciente</p>
+  </header>
+
+  <main class="agenda-layout">
+    <aside class="sidebar-panel">
+      <div class="brand-box">
+        <b>Consultorios Elica</b>
+        <span>Hermanos Ros 3246, Lanús Oeste</span>
+      </div>
+      <a class="side-link" href="panel.html">Panel</a>
+      <a class="side-link" href="agenda.html">Agenda</a>
+      <a class="side-link" href="configuracion.html">Configuración</a>
+      <a class="side-link active" href="pacientes.html">Pacientes / HC</a>
+      <button class="side-link danger-link" onclick="logout()">Salir</button>
+    </aside>
+
+    <section class="agenda-main hc-page-main">
+      <div id="hcMsg" class="msg"></div>
+
+      <section class="hc-full-header card slim-card">
+        <div>
+          <span class="small">Paciente</span>
+          <h2 id="hcNombre">Cargando...</h2>
+          <p id="hcDatos" class="muted"></p>
+        </div>
+        <div class="hc-header-actions">
+          <a class="btn secondary" href="agenda.html">← Volver a agenda</a>
+          <button class="btn" onclick="window.print()">Imprimir</button>
+        </div>
+      </section>
+
+      <section class="hc-tabs-page">
+        <button class="tab active" data-tab="evoluciones" onclick="mostrarTabHC('evoluciones')">Evoluciones</button>
+        <button class="tab" data-tab="ficha" onclick="mostrarTabHC('ficha')">Ficha completa</button>
+        <button class="tab" data-tab="turnos" onclick="mostrarTabHC('turnos')">Turnos</button>
+        <button class="tab" data-tab="archivos" onclick="mostrarTabHC('archivos')">Archivos</button>
+      </section>
+
+      <section id="tab-evoluciones" class="hc-tab-content active">
+        <div class="hc-two-cols full-page-hc">
+          <div class="hc-panel card slim-card">
+            <h3>Nueva evolución</h3>
+            <form id="historiaFullForm">
+              <input type="hidden" id="hcPacienteId">
+              <div class="modal-grid">
+                <div><label>Profesional</label><input id="fullProfesional" placeholder="Nombre del profesional" required></div>
+                <div><label>Especialidad</label><input id="fullEspecialidad" placeholder="Especialidad" required></div>
+              </div>
+              <label>Motivo / demanda actual</label>
+              <textarea id="fullMotivo" placeholder="Motivo de consulta o situación trabajada hoy"></textarea>
+              <label>Observación clínica</label>
+              <textarea id="fullEvolucion" placeholder="Registro clínico, evolución, conducta observada, respuesta al tratamiento"></textarea>
+              <label>Intervención realizada</label>
+              <textarea id="fullIntervencion" placeholder="Técnicas, indicaciones, intervenciones o abordajes realizados"></textarea>
+              <label>Próximos objetivos</label>
+              <textarea id="fullObjetivos" placeholder="Objetivos para próximos encuentros, indicaciones, seguimiento"></textarea>
+              <button class="btn ok" type="submit">Guardar evolución</button>
+            </form>
+          </div>
+          <div class="hc-panel card slim-card">
+            <h3>Evoluciones del paciente</h3>
+            <p class="small">Ordenadas por fecha. Visibles para todo el equipo profesional.</p>
+            <div id="hcEvoluciones" class="timeline"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="tab-ficha" class="hc-tab-content">
+        <div class="card slim-card">
+          <h3>Ficha completa</h3>
+          <div id="hcFicha" class="info-grid"></div>
+        </div>
+      </section>
+
+      <section id="tab-turnos" class="hc-tab-content">
+        <div class="card slim-card">
+          <h3>Turnos del paciente</h3>
+          <table class="table"><thead><tr><th>Fecha</th><th>Hora</th><th>Profesional</th><th>Especialidad</th><th>Estado</th></tr></thead><tbody id="hcTurnos"></tbody></table>
+        </div>
+      </section>
+
+      <section id="tab-archivos" class="hc-tab-content">
+        <div class="hc-two-cols">
+          <div class="card slim-card">
+            <h3>Adjuntar enlace de archivo</h3>
+            <form id="archivoFullForm">
+              <label>Nombre</label><input id="fullArchivoNombre" placeholder="Ej: Informe escolar">
+              <label>URL del archivo</label><input id="fullArchivoUrl" placeholder="https://...">
+              <label>Descripción</label><textarea id="fullArchivoDesc"></textarea>
+              <button class="btn" type="submit">Guardar archivo</button>
+            </form>
+          </div>
+          <div class="card slim-card">
+            <h3>Archivos cargados</h3>
+            <table class="table"><thead><tr><th>Archivo</th><th>Descripción</th><th>Link</th></tr></thead><tbody id="hcArchivos"></tbody></table>
+          </div>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

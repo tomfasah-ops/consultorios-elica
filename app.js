@@ -84,78 +84,49 @@ function abrirTurno(id){
   $('turnoModal').classList.remove('hidden');
 }
 async function obtenerOCrearPacienteDesdeTurno(t){
+  // IMPORTANTE: no buscar solo por teléfono, porque muchas pruebas/pacientes pueden compartirlo.
+  // Primero usamos DNI si parece válido; si no, usamos nombre + teléfono.
   let paciente=null;
-  if(t.dni){
-    const r=await sb.from('pacientes').select('*').eq('dni',t.dni).maybeSingle();
-    if(r.data) paciente=r.data;
-  }
-  if(!paciente && t.telefono){
-    const r=await sb.from('pacientes').select('*').eq('telefono',t.telefono).limit(1);
+  const dni=String(t.dni||'').trim();
+  const tel=String(t.telefono||'').trim();
+  const nombre=String(t.paciente_nombre||'Paciente sin nombre').trim();
+  const dniValido=/^[0-9]{6,12}$/.test(dni);
+
+  if(dniValido){
+    const r=await sb.from('pacientes').select('*').eq('dni',dni).limit(1);
     if(r.data && r.data.length) paciente=r.data[0];
   }
+
+  if(!paciente && tel && nombre){
+    const r=await sb.from('pacientes').select('*').eq('telefono',tel).eq('nombre',nombre).limit(1);
+    if(r.data && r.data.length) paciente=r.data[0];
+  }
+
   if(paciente) return paciente;
-  const nuevo={nombre:t.paciente_nombre||'Paciente sin nombre',dni:t.dni||null,telefono:t.telefono||'',obra_social:t.obra_social||'',observaciones:`Paciente creado automáticamente desde turno del ${t.fecha} a las ${String(t.hora).slice(0,5)}.`};
+
+  const nuevo={
+    nombre,
+    dni:dniValido ? dni : (dni || null),
+    telefono:tel,
+    obra_social:t.obra_social||'',
+    observaciones:`Paciente creado automáticamente desde el turno #${t.id} del ${t.fecha} a las ${String(t.hora).slice(0,5)}.`
+  };
   const {data,error}=await sb.from('pacientes').insert(nuevo).select('*').single();
   if(error) throw error;
   return data;
 }
 async function abrirHistoriaDesdeTurno(turnoId){
-  const box=$('historiaAgendaBox');
-  if(box) box.innerHTML='<p class="small">Cargando historia clínica...</p>';
   const raw=sessionStorage.getItem('turnosAgenda')||'[]';
   const turnos=JSON.parse(raw);
   const t=turnos.find(x=>String(x.id)===String(turnoId));
-  if(!t || !box) return;
+  if(!t) return;
   try{
     const paciente=await obtenerOCrearPacienteDesdeTurno(t);
-    const {data:hist,error}=await sb.from('historias_clinicas').select('*').eq('paciente_id',paciente.id).order('fecha',{ascending:false}).order('created_at',{ascending:false});
-    if(error) throw error;
-    const especialidadProfesional = t.especialidad || await getEspecialidadDeProfesional(t.profesional);
-    box.innerHTML=`
-      <hr>
-      <section class="hc-shell">
-        <div class="hc-header">
-          <div>
-            <span class="small">Historia clínica compartida</span>
-            <h3>${esc(paciente.nombre)}</h3>
-            <p>DNI ${esc(paciente.dni||'No informado')} · ${esc(paciente.telefono||'Sin teléfono')}</p>
-          </div>
-          <div class="hc-badge">Equipo Elica</div>
-        </div>
-        <div class="hc-tabs">
-          <button class="tab active">Evoluciones</button>
-          <a class="tab" href="pacientes.html">Ficha completa</a>
-        </div>
-        <div class="hc-two-cols">
-          <div class="hc-panel">
-            <h4>Nueva evolución</h4>
-            <div class="modal-grid">
-              <div><label>Profesional</label><input id="agendaProfesionalHC" value="${esc(t.profesional||'')}"></div>
-              <div><label>Especialidad</label><input id="agendaEspecialidadHC" value="${esc(especialidadProfesional||'')}"></div>
-            </div>
-            <label>Motivo / demanda actual</label>
-            <textarea id="agendaMotivo" placeholder="Motivo de consulta o situación trabajada hoy"></textarea>
-            <label>Observación clínica</label>
-            <textarea id="agendaEvolucion" placeholder="Registro clínico, evolución, conducta observada, respuesta al tratamiento"></textarea>
-            <label>Intervención realizada</label>
-            <textarea id="agendaIntervencion" placeholder="Técnicas, indicaciones, intervenciones o abordajes realizados"></textarea>
-            <label>Próximos objetivos</label>
-            <textarea id="agendaObjetivos" placeholder="Objetivos para próximos encuentros, indicaciones, seguimiento"></textarea>
-            <div class="modal-actions">
-              <button class="btn ok" onclick="guardarHistoriaAgenda(${paciente.id},${turnoId})">Guardar evolución</button>
-              <button class="btn secondary" onclick="cerrarModal()">Cerrar</button>
-            </div>
-            <div id="agendaHistMsg" class="msg"></div>
-          </div>
-          <div class="hc-panel">
-            <h4>Evoluciones anteriores</h4>
-            <p class="small">Ordenadas por fecha. Todos los profesionales del centro pueden ver el recorrido clínico del paciente.</p>
-            <div class="timeline">${(hist||[]).map(evolucionCard).join('')||'<div class="empty-state">Sin evoluciones previas.</div>'}</div>
-          </div>
-        </div>
-      </section>`;
+    const params=new URLSearchParams({id:paciente.id, turno:turnoId, profesional:t.profesional||'', especialidad:t.especialidad||''});
+    location.href='historia-clinica.html?'+params.toString();
   }catch(err){
-    box.innerHTML=`<div class="msg error" style="display:block">${esc(err.message)}</div>`;
+    const box=$('historiaAgendaBox');
+    if(box) box.innerHTML=`<div class="msg error" style="display:block">${esc(err.message)}</div>`;
   }
 }
 async function guardarHistoriaAgenda(pacienteId,turnoId){
@@ -207,4 +178,67 @@ async function crearHistoria(e){
   if(error)show('hmsg',error.message,'error'); else{show('hmsg','Evolución guardada.','success'); verPaciente(row.paciente_id,$('pacienteTitulo').textContent); e.target.reset();}
 }
 async function crearArchivo(e){e.preventDefault(); const row={paciente_id:$('paciente_id').value,nombre_archivo:$('a_nombre').value,url_archivo:$('a_url').value,descripcion:$('a_desc').value}; const {error}=await sb.from('archivos_paciente').insert(row); if(error)show('amsg',error.message,'error'); else{show('amsg','Archivo registrado.','success'); verPaciente(row.paciente_id,$('pacienteTitulo').textContent); e.target.reset();}}
-document.addEventListener('DOMContentLoaded',()=>{if($('agendaDesde')) $('agendaDesde').value=today(); loadTurnosForm(); agenda(); pacientes(); loadConfig(); $('turnoForm')?.addEventListener('submit',reservar); $('fecha')?.addEventListener('change',horariosOcupados); $('profesional')?.addEventListener('change',horariosOcupados); $('loginForm')?.addEventListener('submit',login); $('agendaBuscar')?.addEventListener('click',agenda); $('diaAnterior')?.addEventListener('click',()=>{const d=$('agendaDesde'); d.value=addDays(d.value||today(),-1); agenda();}); $('diaHoy')?.addEventListener('click',()=>{const d=$('agendaDesde'); d.value=today(); agenda();}); $('diaSiguiente')?.addEventListener('click',()=>{const d=$('agendaDesde'); d.value=addDays(d.value||today(),1); agenda();}); $('agendaProfesional')?.addEventListener('change',agenda); $('agendaVista')?.addEventListener('change',agenda); $('pacienteForm')?.addEventListener('submit',crearPaciente); $('histForm')?.addEventListener('submit',crearHistoria); $('archForm')?.addEventListener('submit',crearArchivo); $('profForm')?.addEventListener('submit',crearProfesional); $('espForm')?.addEventListener('submit',crearEspecialidad); $('horForm')?.addEventListener('submit',crearHorario);});
+
+function mostrarTabHC(tab){
+  document.querySelectorAll('.hc-tabs-page .tab').forEach(b=>b.classList.toggle('active', b.dataset.tab===tab));
+  document.querySelectorAll('.hc-tab-content').forEach(s=>s.classList.toggle('active', s.id==='tab-'+tab));
+}
+async function loadHistoriaClinicaFull(){
+  if(!$('hcNombre')) return;
+  guard();
+  const params=new URLSearchParams(location.search);
+  const id=params.get('id');
+  const turnoId=params.get('turno');
+  if(!id){show('hcMsg','No se encontró el paciente. Volvé a la agenda y abrí nuevamente la historia clínica.','error'); return;}
+  $('hcPacienteId').value=id;
+  $('fullProfesional').value=params.get('profesional')||'';
+  $('fullEspecialidad').value=params.get('especialidad')||'';
+  const {data:p,error:perr}=await sb.from('pacientes').select('*').eq('id',id).single();
+  if(perr){show('hcMsg',perr.message,'error'); return;}
+  $('hcNombre').textContent=p.nombre||'Paciente';
+  $('hcDatos').textContent=`DNI: ${p.dni||'No informado'} · Teléfono: ${p.telefono||'No informado'} · Obra social: ${p.obra_social||'No informada'}`;
+  $('hcFicha').innerHTML=`<p><b>Nombre:</b> ${esc(p.nombre)}</p><p><b>DNI:</b> ${esc(p.dni||'')}</p><p><b>Teléfono:</b> ${esc(p.telefono||'')}</p><p><b>Email:</b> ${esc(p.email||'')}</p><p><b>Obra social:</b> ${esc(p.obra_social||'')}</p><p><b>Observaciones:</b><br>${esc(p.observaciones||'')}</p>`;
+  await cargarEvolucionesFull(id);
+  await cargarTurnosPacienteFull(p);
+  await cargarArchivosFull(id);
+}
+async function cargarEvolucionesFull(id){
+  const {data,error}=await sb.from('historias_clinicas').select('*').eq('paciente_id',id).order('fecha',{ascending:false}).order('created_at',{ascending:false});
+  if(error){$('hcEvoluciones').innerHTML=`<div class="msg error" style="display:block">${esc(error.message)}</div>`; return;}
+  $('hcEvoluciones').innerHTML=(data||[]).map(evolucionCard).join('')||'<div class="empty-state">Sin evoluciones cargadas.</div>';
+}
+async function cargarTurnosPacienteFull(p){
+  let q=sb.from('turnos').select('*').order('fecha',{ascending:false}).order('hora',{ascending:false});
+  if(p.dni) q=q.eq('dni',p.dni); else if(p.telefono) q=q.eq('telefono',p.telefono); else q=q.eq('paciente_nombre',p.nombre);
+  const {data,error}=await q;
+  if(error){$('hcTurnos').innerHTML=`<tr><td colspan="5">${esc(error.message)}</td></tr>`; return;}
+  $('hcTurnos').innerHTML=(data||[]).map(t=>`<tr><td>${esc(t.fecha)}</td><td>${esc(String(t.hora).slice(0,5))}</td><td>${esc(t.profesional)}</td><td>${esc(t.especialidad)}</td><td><span class="pill ${estadoClass(t.estado)}">${esc(t.estado||'confirmado')}</span></td></tr>`).join('')||'<tr><td colspan="5">Sin turnos registrados.</td></tr>';
+}
+async function cargarArchivosFull(id){
+  const {data,error}=await sb.from('archivos_paciente').select('*').eq('paciente_id',id).order('created_at',{ascending:false});
+  if(error){$('hcArchivos').innerHTML=`<tr><td colspan="3">${esc(error.message)}</td></tr>`; return;}
+  $('hcArchivos').innerHTML=(data||[]).map(a=>`<tr><td>${esc(a.nombre_archivo)}</td><td>${esc(a.descripcion||'')}</td><td>${a.url_archivo?`<a href="${esc(a.url_archivo)}" target="_blank">Abrir</a>`:''}</td></tr>`).join('')||'<tr><td colspan="3">Sin archivos.</td></tr>';
+}
+async function crearHistoriaFull(e){
+  e.preventDefault();
+  const pacienteId=$('hcPacienteId').value;
+  const row={paciente_id:pacienteId,profesional:$('fullProfesional').value.trim(),especialidad:$('fullEspecialidad').value.trim(),motivo:$('fullMotivo').value.trim(),evolucion:$('fullEvolucion').value.trim(),intervencion:$('fullIntervencion').value.trim(),objetivos:$('fullObjetivos').value.trim(),fecha:today()};
+  if(!row.motivo && !row.evolucion && !row.intervencion && !row.objetivos){show('hcMsg','Escribí al menos un campo de la evolución.','error'); return;}
+  const {error}=await sb.from('historias_clinicas').insert(row);
+  if(error){show('hcMsg',error.message,'error'); return;}
+  show('hcMsg','Evolución guardada correctamente.','success');
+  e.target.reset();
+  await cargarEvolucionesFull(pacienteId);
+}
+async function crearArchivoFull(e){
+  e.preventDefault();
+  const pacienteId=$('hcPacienteId').value;
+  const row={paciente_id:pacienteId,nombre_archivo:$('fullArchivoNombre').value.trim(),url_archivo:$('fullArchivoUrl').value.trim(),descripcion:$('fullArchivoDesc').value.trim()};
+  const {error}=await sb.from('archivos_paciente').insert(row);
+  if(error){show('hcMsg',error.message,'error'); return;}
+  show('hcMsg','Archivo registrado correctamente.','success');
+  e.target.reset();
+  await cargarArchivosFull(pacienteId);
+}
+
+document.addEventListener('DOMContentLoaded',()=>{if($('agendaDesde')) $('agendaDesde').value=today(); loadTurnosForm(); agenda(); pacientes(); loadConfig(); $('turnoForm')?.addEventListener('submit',reservar); $('fecha')?.addEventListener('change',horariosOcupados); $('profesional')?.addEventListener('change',horariosOcupados); $('loginForm')?.addEventListener('submit',login); $('agendaBuscar')?.addEventListener('click',agenda); $('diaAnterior')?.addEventListener('click',()=>{const d=$('agendaDesde'); d.value=addDays(d.value||today(),-1); agenda();}); $('diaHoy')?.addEventListener('click',()=>{const d=$('agendaDesde'); d.value=today(); agenda();}); $('diaSiguiente')?.addEventListener('click',()=>{const d=$('agendaDesde'); d.value=addDays(d.value||today(),1); agenda();}); $('agendaProfesional')?.addEventListener('change',agenda); $('agendaVista')?.addEventListener('change',agenda); $('pacienteForm')?.addEventListener('submit',crearPaciente); $('histForm')?.addEventListener('submit',crearHistoria); $('archForm')?.addEventListener('submit',crearArchivo); loadHistoriaClinicaFull(); $('historiaFullForm')?.addEventListener('submit',crearHistoriaFull); $('archivoFullForm')?.addEventListener('submit',crearArchivoFull); $('profForm')?.addEventListener('submit',crearProfesional); $('espForm')?.addEventListener('submit',crearEspecialidad); $('horForm')?.addEventListener('submit',crearHorario);});
