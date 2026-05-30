@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Agenda | Consultorios Elica</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="agenda-page">
+  <header class="top compact-top">
+    <h1>Agenda del centro</h1>
+    <p>Vista diaria por profesional, estilo sistema de consultorio</p>
+  </header>
+
+  <main class="agenda-layout">
+    <aside class="sidebar-panel">
+      <div class="brand-box">
+        <b>Consultorios Elica</b>
+        <span>Hermanos Ros 3246, Lanús Oeste</span>
+      </div>
+      <a class="side-link" href="panel.html">Panel</a>
+      <a class="side-link active" href="agenda.html">Agenda</a>
+      <a class="side-link" href="configuracion.html">Configuración</a>
+      <a class="side-link" href="pacientes.html">Pacientes / HC</a>
+      <button class="side-link danger-link" onclick="logout()">Salir</button>
+    </aside>
+
+    <section class="agenda-main">
+      <div class="agenda-toolbar card slim-card">
+        <div>
+          <h2>Agenda diaria</h2>
+          <p class="muted">Horarios de 08:00 a 20:00. Turnos cada 10 minutos.</p>
+        </div>
+        <div class="toolbar-actions">
+          <button class="btn secondary" id="diaAnterior">← Día anterior</button>
+          <button class="btn" id="diaHoy">Hoy</button>
+          <button class="btn secondary" id="diaSiguiente">Día siguiente →</button>
+        </div>
+      </div>
+
+      <div class="card slim-card">
+        <div class="filters drapp-filters">
+          <div>
+            <label>Fecha</label>
+            <input type="date" id="agendaDesde">
+          </div>
+          <div>
+            <label>Profesional</label>
+            <select id="agendaProfesional"><option value="">Todos los profesionales</option></select>
+          </div>
+          <div>
+            <label>Vista</label>
+            <select id="agendaVista">
+              <option value="drapp">Día por profesionales</option>
+              <option value="dia">Día simple</option>
+              <option value="lista">Lista</option>
+            </select>
+          </div>
+          <div class="filter-actions">
+            <button class="btn" id="agendaBuscar">Actualizar</button>
+          </div>
+        </div>
+        <div id="msg" class="msg"></div>
+      </div>
+
+      <div class="agenda-stats" id="agendaStats"></div>
+
+      <div id="calendarWrap" class="calendar-wrap drapp-calendar"></div>
+
+      <div id="agendaLista" class="hidden card slim-card">
+        <table class="table">
+          <thead><tr><th>Fecha</th><th>Hora</th><th>Paciente</th><th>Teléfono</th><th>Especialidad</th><th>Profesional</th><th>Estado</th></tr></thead>
+          <tbody id="agendaBody"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <div id="turnoModal" class="modal hidden">
+    <div class="modal-card">
+      <button class="modal-close" onclick="cerrarModal()">×</button>
+      <h2 id="modalPaciente">Turno</h2>
+      <div id="modalContenido"></div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
