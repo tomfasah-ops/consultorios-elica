@@ -356,7 +356,7 @@ async function login(e){
     show('loginMsg','Usuario o contraseña incorrectos. Probá usuario: admin@elica.com y clave: Elica2026!','error');
   }
 }
-async function agenda(){if(!$('calendarWrap')&&!$('agendaBody'))return; guard(); await cargarFiltroProfesionales(); const desde=$('agendaDesde')?.value||today(); const vista=$('agendaVista')?.value||'drapp'; const profesional=$('agendaProfesional')?.value||''; const hasta=(vista==='dia'||vista==='drapp')?addDays(desde,1):addDays(desde,7); let q=sb.from('turnos').select('*').gte('fecha',desde).lt('fecha',hasta).neq('estado','cancelado').order('fecha',{ascending:true}).order('hora',{ascending:true}); if(profesional) q=q.eq('profesional',profesional); const {data,error}=await q; if(error){show('msg',error.message,'error');return} renderAgenda(data||[],desde,vista);}
+async function agenda(){if(!$('calendarWrap')&&!$('agendaBody'))return; guard(); prepararBuscadorAgenda(); await cargarFiltroProfesionales(); const desde=$('agendaDesde')?.value||today(); const vista=$('agendaVista')?.value||'drapp'; const profesional=$('agendaProfesional')?.value||''; const hasta=(vista==='dia'||vista==='drapp')?addDays(desde,1):addDays(desde,7); let q=sb.from('turnos').select('*').gte('fecha',desde).lt('fecha',hasta).neq('estado','cancelado').order('fecha',{ascending:true}).order('hora',{ascending:true}); if(profesional) q=q.eq('profesional',profesional); const {data,error}=await q; if(error){show('msg',error.message,'error');return} renderAgenda(data||[],desde,vista);}
 async function cargarFiltroProfesionales(){const sel=$('agendaProfesional'); if(!sel||sel.dataset.loaded)return; (await getProfesionales()).forEach(p=>sel.add(new Option(p.nombre,p.nombre))); sel.dataset.loaded='1';}
 function esc(s){return String(s||'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}
 function estadoClass(estado){estado=String(estado||'confirmado').toLowerCase(); if(estado.includes('cancel'))return 'cancelado'; if(estado.includes('aus'))return 'ausente'; if(estado.includes('asist'))return 'asistio'; return 'confirmado';}
@@ -479,8 +479,211 @@ async function cancelarTurnoPaciente(id){
   await horariosOcupados();
 }
 
+
+function prepararBuscadorAgenda(){
+  const agendaMain=document.querySelector('.agenda-main');
+  if(!agendaMain || $('agendaBuscadorBox')) return;
+
+  const box=document.createElement('div');
+  box.id='agendaBuscadorBox';
+  box.className='card slim-card';
+  box.innerHTML=`
+    <h3 style="margin-top:0">Buscar paciente en agenda</h3>
+    <p class="muted">Buscá por DNI, nombre, apellido o teléfono. Te muestra los turnos activos del paciente.</p>
+    <div class="filters drapp-filters">
+      <div>
+        <label>Buscar paciente</label>
+        <input id="agendaBusquedaPaciente" placeholder="Ej: 12345678, Miguel, Pérez">
+      </div>
+      <div class="filter-actions">
+        <button class="btn secondary" id="agendaBuscarPaciente" type="button">Buscar</button>
+      </div>
+    </div>
+    <div id="agendaBusquedaResultados"></div>
+  `;
+
+  const stats=$('agendaStats');
+  if(stats) stats.parentNode.insertBefore(box, stats);
+  else agendaMain.prepend(box);
+
+  $('agendaBuscarPaciente')?.addEventListener('click', buscarPacienteAgenda);
+  $('agendaBusquedaPaciente')?.addEventListener('keydown', e=>{
+    if(e.key==='Enter'){e.preventDefault(); buscarPacienteAgenda();}
+  });
+}
+
+async function buscarPacienteAgenda(){
+  const q=($('agendaBusquedaPaciente')?.value||'').trim().toLowerCase();
+  const box=$('agendaBusquedaResultados');
+  if(!box) return;
+
+  if(q.length<2){
+    box.innerHTML='<div class="msg error" style="display:block">Escribí al menos 2 caracteres para buscar.</div>';
+    return;
+  }
+
+  box.innerHTML='<div class="empty-state">Buscando turnos...</div>';
+
+  const {data,error}=await sb.from('turnos')
+    .select('*')
+    .neq('estado','cancelado')
+    .order('fecha',{ascending:true})
+    .order('hora',{ascending:true});
+
+  if(error){
+    box.innerHTML=`<div class="msg error" style="display:block">${esc(error.message)}</div>`;
+    return;
+  }
+
+  const resultados=(data||[]).filter(t=>{
+    const texto=[
+      t.paciente_nombre,
+      t.dni,
+      t.telefono,
+      t.profesional,
+      t.especialidad
+    ].map(x=>String(x||'').toLowerCase()).join(' ');
+    return texto.includes(q);
+  });
+
+  if(!resultados.length){
+    box.innerHTML='<div class="empty-state">No encontramos turnos activos con esos datos.</div>';
+    return;
+  }
+
+  box.innerHTML=`
+    <div class="agenda-search-list">
+      ${resultados.map(t=>`
+        <button type="button" class="agenda-search-item" onclick="irATurnoAgenda('${esc(t.fecha)}', ${t.id})">
+          <b>${esc(t.paciente_nombre)}</b>
+          <span>DNI: ${esc(t.dni||'No informado')} · Tel: ${esc(t.telefono||'')}</span>
+          <span>${esc(t.fecha)} · ${esc(String(t.hora).slice(0,5))} hs · ${esc(t.profesional)} · ${esc(t.especialidad)}</span>
+        </button>
+      `).join('')}
+    </div>
+  `;
+
+  if(!document.getElementById('agendaSearchStyles')){
+    const style=document.createElement('style');
+    style.id='agendaSearchStyles';
+    style.textContent=`
+      .agenda-search-list{display:grid;gap:10px;margin-top:12px}
+      .agenda-search-item{width:100%;text-align:left;border:1px solid #dbe4ea;background:#fff;border-radius:14px;padding:12px;cursor:pointer}
+      .agenda-search-item:hover{border-color:#087ea4;box-shadow:0 4px 14px rgba(8,126,164,.12)}
+      .agenda-search-item b{display:block;color:#075985;margin-bottom:4px}
+      .agenda-search-item span{display:block;color:#475569;font-size:13px;margin-top:2px}
+      .slot.free{cursor:pointer;position:relative}
+      .slot.free:hover{background:#ecfeff!important;outline:2px dashed #67e8f9;outline-offset:-4px}
+      .slot.free:hover:after{content:'Agregar turno';position:absolute;inset:auto 8px 8px auto;background:#087ea4;color:#fff;border-radius:999px;padding:4px 8px;font-size:11px;font-weight:700}
+      .quick-turno-form{display:grid;gap:10px;margin-top:8px}
+    `;
+    document.head.appendChild(style);
+  }
+}
+
+function irATurnoAgenda(fecha, id){
+  const d=$('agendaDesde');
+  if(d) d.value=fecha;
+  agenda().then(()=>setTimeout(()=>abrirTurno(id), 250));
+}
+
+function abrirCrearTurnoAgenda(fecha, hora, profesional){
+  const especialidadSugerida='';
+  $('modalPaciente').textContent='Agregar turno';
+  $('modalContenido').innerHTML=`
+    <p class="muted">Cargá un turno manual desde la agenda del centro.</p>
+    <form id="crearTurnoAgendaForm" class="quick-turno-form">
+      <div class="modal-grid">
+        <div><label>Fecha</label><input id="nuevoTurnoFecha" type="date" value="${esc(fecha)}" required></div>
+        <div><label>Hora</label><select id="nuevoTurnoHora" required></select></div>
+        <div><label>Profesional</label><select id="nuevoTurnoProfesional" required></select></div>
+        <div><label>Especialidad</label><select id="nuevoTurnoEspecialidad" required></select></div>
+        <div><label>Nombre y apellido</label><input id="nuevoTurnoNombre" required></div>
+        <div><label>DNI</label><input id="nuevoTurnoDni"></div>
+        <div><label>WhatsApp</label><input id="nuevoTurnoTelefono"></div>
+        <div><label>Obra social / Particular</label><input id="nuevoTurnoObraSocial"></div>
+      </div>
+      <label>Motivo</label>
+      <textarea id="nuevoTurnoMotivo" placeholder="Motivo de consulta"></textarea>
+      <div class="modal-actions">
+        <button class="btn ok" type="submit">Guardar turno</button>
+        <button class="btn secondary" type="button" onclick="cerrarModal()">Cancelar</button>
+      </div>
+      <div id="nuevoTurnoMsg" class="msg"></div>
+    </form>
+  `;
+  $('turnoModal').classList.remove('hidden');
+
+  cargarFormularioTurnoAgenda(hora, profesional);
+}
+
+async function cargarFormularioTurnoAgenda(horaSeleccionada, profesionalSeleccionado){
+  const horaSel=$('nuevoTurnoHora');
+  const profSel=$('nuevoTurnoProfesional');
+  const espSel=$('nuevoTurnoEspecialidad');
+
+  times().forEach(t=>horaSel.add(new Option(t,t)));
+  horaSel.value=horaSeleccionada;
+
+  const especialidades=await getEspecialidades();
+  const profesionales=await getProfesionales();
+
+  especialidades.forEach(e=>espSel.add(new Option(e.nombre,e.nombre)));
+  profesionales.forEach(p=>profSel.add(new Option(p.especialidad?`${p.nombre} - ${p.especialidad}`:p.nombre,p.nombre)));
+
+  profSel.value=profesionalSeleccionado;
+
+  const prof=profesionales.find(p=>p.nombre===profesionalSeleccionado);
+  if(prof?.especialidad) espSel.value=prof.especialidad;
+
+  profSel.addEventListener('change',()=>{
+    const p=profesionales.find(x=>x.nombre===profSel.value);
+    if(p?.especialidad) espSel.value=p.especialidad;
+  });
+
+  $('crearTurnoAgendaForm')?.addEventListener('submit', guardarTurnoDesdeAgenda);
+}
+
+async function guardarTurnoDesdeAgenda(e){
+  e.preventDefault();
+
+  const row={
+    paciente_nombre:$('nuevoTurnoNombre').value.trim(),
+    dni:$('nuevoTurnoDni').value.trim(),
+    telefono:$('nuevoTurnoTelefono').value.trim(),
+    especialidad:$('nuevoTurnoEspecialidad').value,
+    profesional:$('nuevoTurnoProfesional').value,
+    fecha:$('nuevoTurnoFecha').value,
+    hora:$('nuevoTurnoHora').value,
+    obra_social:$('nuevoTurnoObraSocial').value.trim(),
+    motivo_consulta:$('nuevoTurnoMotivo').value.trim(),
+    estado:'confirmado'
+  };
+
+  if(!row.paciente_nombre || !row.profesional || !row.fecha || !row.hora){
+    show('nuevoTurnoMsg','Completá nombre, profesional, fecha y horario.','error');
+    return;
+  }
+
+  const {error}=await sb.from('turnos').insert(row);
+
+  if(error){
+    show('nuevoTurnoMsg', error.message.includes('duplicate')?'Ese horario ya está ocupado. Elegí otro.':error.message, 'error');
+    return;
+  }
+
+  show('nuevoTurnoMsg','Turno agregado correctamente.','success');
+  setTimeout(async()=>{
+    cerrarModal();
+    const d=$('agendaDesde');
+    if(d) d.value=row.fecha;
+    await agenda();
+  }, 700);
+}
+
+
 async function profesionalesParaAgenda(turnos){let profs=(await getProfesionales()).map(p=>p.nombre); const usados=[...new Set(turnos.map(t=>t.profesional).filter(Boolean))]; usados.forEach(p=>{if(!profs.includes(p))profs.push(p)}); const filtro=$('agendaProfesional')?.value||''; if(filtro)profs=profs.filter(p=>p===filtro); return profs;}
-async function renderAgenda(turnos,desde,vista){sessionStorage.setItem('turnosAgenda',JSON.stringify(turnos)); const lista=$('agendaLista'), cal=$('calendarWrap'), tbody=$('agendaBody'); actualizarStats(turnos); if(vista==='lista'){if(lista)lista.classList.remove('hidden'); if(cal)cal.classList.add('hidden'); if(tbody)tbody.innerHTML=turnos.map(t=>`<tr><td>${esc(t.fecha)}</td><td>${esc(String(t.hora).slice(0,5))}</td><td>${esc(t.paciente_nombre)}</td><td>${esc(t.telefono)}</td><td>${esc(t.especialidad)}</td><td>${esc(t.profesional)}</td><td><span class="pill ${estadoClass(t.estado)}">${esc(t.estado||'confirmado')}</span></td></tr>`).join('')||'<tr><td colspan="7">No hay turnos cargados.</td></tr>'; return;} if(lista)lista.classList.add('hidden'); if(cal)cal.classList.remove('hidden'); if(vista==='drapp'){const profs=await profesionalesParaAgenda(turnos); const cols=Math.max(profs.length,1); let html=`<div class="drapp-grid" style="--cols:${cols}"><div class="drapp-head"><div class="time-head">Hora</div>${profs.map(p=>`<div class="pro-head"><b>${esc(p)}</b><span>${esc(diaNombre(desde))}</span></div>`).join('')}</div>`; for(const hora of times()){html+=`<div class="drapp-row"><div class="calendar-time">${hora}</div>`; for(const prof of profs){const eventos=turnos.filter(t=>t.fecha===desde && String(t.hora).slice(0,5)===hora && t.profesional===prof); html+=`<div class="slot ${eventos.length?'busy':'free'}">${eventos.map(t=>`<button class="event drapp-event ${estadoClass(t.estado)}" onclick="abrirTurno(${t.id})"><b>${esc(t.paciente_nombre)}</b><small>${esc(t.especialidad)}</small><small>${esc(t.telefono||'')}</small></button>`).join('')}</div>`;} html+='</div>';} html+='</div>'; if(cal)cal.innerHTML=html; return;} const dias=Array.from({length:1},(_,i)=>addDays(desde,i)); const cols=dias.length; let html=`<div class="calendar-grid" style="--cols:${cols}"><div class="calendar-head"><div>Hora</div>${dias.map(d=>`<div>${diaNombre(d)}</div>`).join('')}</div>`; for(const hora of times()){html+=`<div class="calendar-row"><div class="calendar-time">${hora}</div>`; for(const dia of dias){const eventos=turnos.filter(t=>t.fecha===dia && String(t.hora).slice(0,5)===hora); html+=`<div>${eventos.map(t=>`<button class="event" onclick="abrirTurno(${t.id})"><b>${esc(t.paciente_nombre)}</b><small>${esc(t.profesional)}</small><small>${esc(t.especialidad)}</small><small>${esc(t.telefono||'')}</small></button>`).join('')}</div>`;} html+='</div>';} html+='</div>'; if(cal)cal.innerHTML=html;}
+async function renderAgenda(turnos,desde,vista){sessionStorage.setItem('turnosAgenda',JSON.stringify(turnos)); const lista=$('agendaLista'), cal=$('calendarWrap'), tbody=$('agendaBody'); actualizarStats(turnos); if(vista==='lista'){if(lista)lista.classList.remove('hidden'); if(cal)cal.classList.add('hidden'); if(tbody)tbody.innerHTML=turnos.map(t=>`<tr><td>${esc(t.fecha)}</td><td>${esc(String(t.hora).slice(0,5))}</td><td>${esc(t.paciente_nombre)}</td><td>${esc(t.telefono)}</td><td>${esc(t.especialidad)}</td><td>${esc(t.profesional)}</td><td><span class="pill ${estadoClass(t.estado)}">${esc(t.estado||'confirmado')}</span></td></tr>`).join('')||'<tr><td colspan="7">No hay turnos cargados.</td></tr>'; return;} if(lista)lista.classList.add('hidden'); if(cal)cal.classList.remove('hidden'); if(vista==='drapp'){const profs=await profesionalesParaAgenda(turnos); const cols=Math.max(profs.length,1); let html=`<div class="drapp-grid" style="--cols:${cols}"><div class="drapp-head"><div class="time-head">Hora</div>${profs.map(p=>`<div class="pro-head"><b>${esc(p)}</b><span>${esc(diaNombre(desde))}</span></div>`).join('')}</div>`; for(const hora of times()){html+=`<div class="drapp-row"><div class="calendar-time">${hora}</div>`; for(const prof of profs){const eventos=turnos.filter(t=>t.fecha===desde && String(t.hora).slice(0,5)===hora && t.profesional===prof); html+=`<div class="slot ${eventos.length?'busy':'free'}" ${eventos.length?'':`onclick="abrirCrearTurnoAgenda('${desde}','${hora}','${esc(prof)}')"`}>${eventos.map(t=>`<button class="event drapp-event ${estadoClass(t.estado)}" onclick="abrirTurno(${t.id}); event.stopPropagation();"><b>${esc(t.paciente_nombre)}</b><small>${esc(t.especialidad)}</small><small>${esc(t.telefono||'')}</small></button>`).join('')}</div>`;} html+='</div>';} html+='</div>'; if(cal)cal.innerHTML=html; return;} const dias=Array.from({length:1},(_,i)=>addDays(desde,i)); const cols=dias.length; let html=`<div class="calendar-grid" style="--cols:${cols}"><div class="calendar-head"><div>Hora</div>${dias.map(d=>`<div>${diaNombre(d)}</div>`).join('')}</div>`; for(const hora of times()){html+=`<div class="calendar-row"><div class="calendar-time">${hora}</div>`; for(const dia of dias){const eventos=turnos.filter(t=>t.fecha===dia && String(t.hora).slice(0,5)===hora); html+=`<div class="slot ${eventos.length?'busy':'free'}" ${eventos.length?'':`onclick="abrirCrearTurnoAgenda('${dia}','${hora}','')"`}>${eventos.map(t=>`<button class="event" onclick="abrirTurno(${t.id}); event.stopPropagation();"><b>${esc(t.paciente_nombre)}</b><small>${esc(t.profesional)}</small><small>${esc(t.especialidad)}</small><small>${esc(t.telefono||'')}</small></button>`).join('')}</div>`;} html+='</div>';} html+='</div>'; if(cal)cal.innerHTML=html;}
 async function loadConfig(){if(!$('profBody'))return; guard(); await llenarSelectsConfig(); await listarProfesionales(); await listarEspecialidades(); await listarHorarios();}
 async function llenarSelectsConfig(){const esp=$('profEspecialidad'), hp=$('horProfesional'); if(esp){esp.innerHTML=''; (await getEspecialidades()).forEach(e=>esp.add(new Option(e.nombre,e.nombre)));} if(hp){hp.innerHTML=''; (await getProfesionales()).forEach(p=>hp.add(new Option(p.nombre,p.nombre)));}}
 async function listarProfesionales(){const body=$('profBody'); if(!body)return; const data=await getProfesionales(); body.innerHTML=data.map(p=>`<tr><td>${p.nombre}</td><td>${p.especialidad||''}</td><td><button class="action-link" onclick="desactivar('profesionales',${p.id})">Desactivar</button></td></tr>`).join('')||'<tr><td colspan="3">Sin profesionales.</td></tr>';}
