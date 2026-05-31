@@ -688,13 +688,50 @@ async function loadConfig(){if(!$('profBody'))return; guard(); await llenarSelec
 async function llenarSelectsConfig(){const esp=$('profEspecialidad'), hp=$('horProfesional'); if(esp){esp.innerHTML=''; (await getEspecialidades()).forEach(e=>esp.add(new Option(e.nombre,e.nombre)));} if(hp){hp.innerHTML=''; (await getProfesionales()).forEach(p=>hp.add(new Option(p.nombre,p.nombre)));}}
 async function listarProfesionales(){const body=$('profBody'); if(!body)return; const data=await getProfesionales(); body.innerHTML=data.map(p=>`<tr><td>${p.nombre}</td><td>${p.especialidad||''}</td><td><button class="action-link" onclick="desactivar('profesionales',${p.id})">Desactivar</button></td></tr>`).join('')||'<tr><td colspan="3">Sin profesionales.</td></tr>';}
 async function listarEspecialidades(){const body=$('espBody'); if(!body)return; const data=await getEspecialidades(); body.innerHTML=data.map(e=>`<tr><td>${e.nombre}</td><td><button class="action-link" onclick="desactivar('especialidades',${e.id})">Desactivar</button></td></tr>`).join('')||'<tr><td colspan="2">Sin especialidades.</td></tr>';}
-async function listarHorarios(){const body=$('horBody'); if(!body)return; const {data,error}=await sb.from('horarios').select('*').order('profesional').order('dia_semana'); if(error){body.innerHTML=`<tr><td colspan="5">${error.message}</td></tr>`;return} const lista=(data||[]).filter(h=>h.activo!==false); body.innerHTML=lista.map(h=>`<tr><td>${h.profesional}</td><td>${h.dia_semana}</td><td>${String(h.hora_inicio).slice(0,5)}</td><td>${String(h.hora_fin).slice(0,5)}</td><td><button class="action-link" onclick="desactivar('horarios',${h.id})">Desactivar</button></td></tr>`).join('')||'<tr><td colspan="5">Sin horarios cargados.</td></tr>';}
+async function listarHorarios(){
+  const body=$('horBody');
+  if(!body)return;
+
+  const profesionalesActivos=await getProfesionales();
+  const nombresActivos=new Set(profesionalesActivos.map(p=>String(p.nombre||'').trim()));
+
+  const {data,error}=await sb.from('horarios')
+    .select('*')
+    .order('profesional')
+    .order('dia_semana');
+
+  if(error){
+    body.innerHTML=`<tr><td colspan="5">${error.message}</td></tr>`;
+    return;
+  }
+
+  const lista=(data||[]).filter(h=>
+    h.activo!==false &&
+    nombresActivos.has(String(h.profesional||'').trim())
+  );
+
+  body.innerHTML=lista.map(h=>`
+    <tr>
+      <td>${esc(h.profesional)}</td>
+      <td>${esc(h.dia_semana)}</td>
+      <td>${String(h.hora_inicio).slice(0,5)}</td>
+      <td>${String(h.hora_fin).slice(0,5)}</td>
+      <td><button class="action-link" onclick="desactivar('horarios',${h.id})">Desactivar</button></td>
+    </tr>
+  `).join('')||'<tr><td colspan="5">Sin horarios cargados.</td></tr>';
+}
 async function crearProfesional(e){e.preventDefault(); const row={nombre:$('profNombre').value.trim(),especialidad:$('profEspecialidad').value,activo:true}; const {error}=await sb.from('profesionales').insert(row); if(error)show('profMsg',error.message,'error'); else{show('profMsg','Profesional guardado.','success'); e.target.reset(); await loadConfig();}}
 async function crearEspecialidad(e){e.preventDefault(); const row={nombre:$('espNombre').value.trim(),activo:true}; const {error}=await sb.from('especialidades').insert(row); if(error)show('espMsg',error.message,'error'); else{show('espMsg','Especialidad guardada.','success'); e.target.reset(); await loadConfig();}}
 async function crearHorario(e){
   e.preventDefault();
 
+  const profesionalSeleccionado=$('horProfesional').value;
   const dias=[...$('horDia').selectedOptions].map(x=>x.value);
+
+  if(!profesionalSeleccionado){
+    show('horMsg','Seleccioná un profesional.','error');
+    return;
+  }
 
   if(!dias.length){
     show('horMsg','Seleccioná al menos un día de atención.','error');
@@ -702,7 +739,7 @@ async function crearHorario(e){
   }
 
   const rows=dias.map(dia=>({
-    profesional:$('horProfesional').value,
+    profesional:profesionalSeleccionado,
     dia_semana:dia,
     hora_inicio:$('horInicio').value,
     hora_fin:$('horFin').value,
@@ -714,12 +751,45 @@ async function crearHorario(e){
   if(error){
     show('horMsg',error.message,'error');
   } else {
-    show('horMsg',`Horarios guardados correctamente (${dias.join(', ')}).`,'success');
-    e.target.reset();
-    await loadConfig();
+    show('horMsg',`Horarios guardados correctamente para ${profesionalSeleccionado} (${dias.join(', ')}).`,'success');
+
+    // Mantiene el mismo profesional seleccionado para seguir cargando días/horarios.
+    $('horDia').selectedIndex=-1;
+
+    await llenarSelectsConfig();
+    if($('horProfesional')) $('horProfesional').value=profesionalSeleccionado;
+
+    await listarProfesionales();
+    await listarEspecialidades();
+    await listarHorarios();
   }
 }
-async function desactivar(tabla,id){if(!confirm('¿Desactivar este ítem?'))return; const {error}=await sb.from(tabla).update({activo:false}).eq('id',id); if(error)alert(error.message); else loadConfig();}
+async function desactivar(tabla,id){
+  if(!confirm('¿Desactivar este ítem?'))return;
+
+  let nombreProfesional=null;
+
+  if(tabla==='profesionales'){
+    const {data}=await sb.from('profesionales').select('nombre').eq('id',id).single();
+    nombreProfesional=data?.nombre||null;
+  }
+
+  const {error}=await sb.from(tabla).update({activo:false}).eq('id',id);
+
+  if(error){
+    alert(error.message);
+    return;
+  }
+
+  // Si se desactiva un profesional, sus horarios también dejan de mostrarse/usar.
+  if(tabla==='profesionales' && nombreProfesional){
+    await sb.from('horarios')
+      .update({activo:false})
+      .eq('profesional',nombreProfesional);
+  }
+
+  await loadConfig();
+}
 async function pacientes(){const body=$('pacientesBody'); if(!body)return; guard(); const {data}=await sb.from('pacientes').select('*').order('created_at',{ascending:false}); body.innerHTML=(data||[]).map(p=>`<tr><td>${p.nombre}</td><td>${p.dni||''}</td><td>${p.telefono||''}</td><td>${p.obra_social||''}</td><td><button class="btn" onclick="verPaciente(${p.id},'${(p.nombre||'').replaceAll("'",'')}')">Abrir</button></td></tr>`).join('')||'<tr><td colspan="5">Sin pacientes.</td></tr>';}
 async function crearPaciente(e){e.preventDefault(); const p={nombre:$('p_nombre').value,dni:$('p_dni').value,telefono:$('p_tel').value,email:$('p_email').value,obra_social:$('p_os').value,observaciones:$('p_obs').value}; const {error}=await sb.from('pacientes').insert(p); if(error)show('pmsg',error.message,'error'); else{show('pmsg','Paciente creado correctamente.','success'); e.target.reset(); pacientes();}}
 async function verPaciente(id,nombre){
