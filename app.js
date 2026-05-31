@@ -80,7 +80,7 @@ function abrirTurno(id){
   const t=turnos.find(x=>String(x.id)===String(id));
   if(!t)return;
   $('modalPaciente').textContent=t.paciente_nombre||'Paciente';
-  $('modalContenido').innerHTML=`<div class="modal-grid"><p><b>Fecha:</b> ${esc(t.fecha)}</p><p><b>Hora:</b> ${esc(String(t.hora).slice(0,5))} hs</p><p><b>Profesional:</b> ${esc(t.profesional)}</p><p><b>Especialidad:</b> ${esc(t.especialidad)}</p><p><b>Teléfono:</b> ${esc(t.telefono)}</p><p><b>DNI:</b> ${esc(t.dni)}</p><p><b>Obra social:</b> ${esc(t.obra_social)}</p><p><b>Estado:</b> ${esc(t.estado||'confirmado')}</p></div><hr><p><b>Motivo:</b><br>${esc(t.motivo_consulta||'Sin motivo cargado')}</p><div class="modal-actions"><button class="btn ok" onclick="abrirHistoriaDesdeTurno(${t.id})">Abrir historia clínica</button><button class="btn secondary" onclick="cerrarModal()">Cerrar</button></div><div id="historiaAgendaBox"></div>`;
+  $('modalContenido').innerHTML=`<div class="modal-grid"><p><b>Fecha:</b> ${esc(t.fecha)}</p><p><b>Hora:</b> ${esc(String(t.hora).slice(0,5))} hs</p><p><b>Profesional:</b> ${esc(t.profesional)}</p><p><b>Especialidad:</b> ${esc(t.especialidad)}</p><p><b>Teléfono:</b> ${esc(t.telefono)}</p><p><b>DNI:</b> ${esc(t.dni)}</p><p><b>Obra social:</b> ${esc(t.obra_social)}</p><p><b>Estado:</b> ${esc(t.estado||'confirmado')}</p></div><hr><p><b>Motivo:</b><br>${esc(t.motivo_consulta||'Sin motivo cargado')}</p><div class="modal-actions"><button class="btn ok" onclick="abrirHistoriaDesdeTurno(${t.id})">Abrir historia clínica</button><button class="btn secondary" onclick="cancelarTurnoCentro(${t.id})">Cancelar turno</button><button class="btn danger" onclick="eliminarTurnoCentro(${t.id})">Eliminar turno</button><button class="btn secondary" onclick="cerrarModal()">Cerrar</button></div><div id="historiaAgendaBox"></div>`;
   $('turnoModal').classList.remove('hidden');
 }
 async function obtenerOCrearPacienteDesdeTurno(t){
@@ -147,6 +147,51 @@ async function guardarHistoriaAgenda(pacienteId,turnoId){
   await abrirHistoriaDesdeTurno(turnoId);
 }
 function cerrarModal(){ $('turnoModal')?.classList.add('hidden'); }
+async function cancelarTurnoCentro(id){
+  if(!confirm('¿Cancelar este turno? El horario quedará libre para otra reserva.')) return;
+  const {error}=await sb.from('turnos').update({estado:'cancelado',cancelado_en:new Date().toISOString(),cancelado_por:'centro',motivo_cancelacion:'Cancelado desde agenda'}).eq('id',id);
+  if(error){alert('No se pudo cancelar: '+error.message); return;}
+  cerrarModal();
+  await agenda();
+  show('msg','Turno cancelado correctamente. El horario volvió a quedar disponible.','success');
+}
+async function eliminarTurnoCentro(id){
+  if(!confirm('¿Eliminar definitivamente este turno de la agenda? Esta acción no se puede deshacer.')) return;
+  const {error}=await sb.from('turnos').delete().eq('id',id);
+  if(error){alert('No se pudo eliminar: '+error.message); return;}
+  cerrarModal();
+  await agenda();
+  show('msg','Turno eliminado correctamente.','success');
+}
+async function buscarTurnosCancelar(e){
+  e.preventDefault();
+  const dni=($('cancelDni')?.value||'').trim();
+  const telefono=($('cancelTelefono')?.value||'').replace(/\D/g,'');
+  const fecha=($('cancelFecha')?.value||'').trim();
+  const box=$('cancelResultados');
+  if(!box) return;
+  box.innerHTML='Buscando turnos...';
+  if(!dni && !telefono){box.innerHTML='<div class="msg error" style="display:block">Ingresá al menos DNI o WhatsApp para buscar el turno.</div>';return;}
+  let q=sb.from('turnos').select('*').neq('estado','cancelado').order('fecha',{ascending:true}).order('hora',{ascending:true});
+  if(dni) q=q.eq('dni',dni);
+  if(fecha) q=q.eq('fecha',fecha);
+  const {data,error}=await q;
+  if(error){box.innerHTML=`<div class="msg error" style="display:block">${esc(error.message)}</div>`;return;}
+  let lista=(data||[]);
+  if(telefono) lista=lista.filter(t=>String(t.telefono||'').replace(/\D/g,'').includes(telefono) || telefono.includes(String(t.telefono||'').replace(/\D/g,'')));
+  if(!lista.length){box.innerHTML='<div class="empty-state">No encontramos turnos activos con esos datos.</div>';return;}
+  box.innerHTML=lista.map(t=>`<div class="cancel-card"><b>${esc(t.paciente_nombre)}</b><span>${esc(t.fecha)} · ${esc(String(t.hora).slice(0,5))} hs</span><span>${esc(t.especialidad)} · ${esc(t.profesional)}</span><button class="btn danger" type="button" onclick="cancelarTurnoPaciente(${t.id})">Cancelar este turno</button></div>`).join('');
+}
+async function cancelarTurnoPaciente(id){
+  if(!confirm('¿Querés cancelar este turno?')) return;
+  const motivo=prompt('Motivo de cancelación (opcional):')||'Cancelado por paciente';
+  const {error}=await sb.from('turnos').update({estado:'cancelado',cancelado_en:new Date().toISOString(),cancelado_por:'paciente',motivo_cancelacion:motivo}).eq('id',id);
+  if(error){alert('No se pudo cancelar: '+error.message); return;}
+  show('cancelMsg','✅ Tu turno fue cancelado correctamente. El horario quedó liberado.','success');
+  const box=$('cancelResultados'); if(box) box.innerHTML='';
+  await horariosOcupados();
+}
+
 async function profesionalesParaAgenda(turnos){let profs=(await getProfesionales()).map(p=>p.nombre); const usados=[...new Set(turnos.map(t=>t.profesional).filter(Boolean))]; usados.forEach(p=>{if(!profs.includes(p))profs.push(p)}); const filtro=$('agendaProfesional')?.value||''; if(filtro)profs=profs.filter(p=>p===filtro); return profs;}
 async function renderAgenda(turnos,desde,vista){sessionStorage.setItem('turnosAgenda',JSON.stringify(turnos)); const lista=$('agendaLista'), cal=$('calendarWrap'), tbody=$('agendaBody'); actualizarStats(turnos); if(vista==='lista'){if(lista)lista.classList.remove('hidden'); if(cal)cal.classList.add('hidden'); if(tbody)tbody.innerHTML=turnos.map(t=>`<tr><td>${esc(t.fecha)}</td><td>${esc(String(t.hora).slice(0,5))}</td><td>${esc(t.paciente_nombre)}</td><td>${esc(t.telefono)}</td><td>${esc(t.especialidad)}</td><td>${esc(t.profesional)}</td><td><span class="pill ${estadoClass(t.estado)}">${esc(t.estado||'confirmado')}</span></td></tr>`).join('')||'<tr><td colspan="7">No hay turnos cargados.</td></tr>'; return;} if(lista)lista.classList.add('hidden'); if(cal)cal.classList.remove('hidden'); if(vista==='drapp'){const profs=await profesionalesParaAgenda(turnos); const cols=Math.max(profs.length,1); let html=`<div class="drapp-grid" style="--cols:${cols}"><div class="drapp-head"><div class="time-head">Hora</div>${profs.map(p=>`<div class="pro-head"><b>${esc(p)}</b><span>${esc(diaNombre(desde))}</span></div>`).join('')}</div>`; for(const hora of times()){html+=`<div class="drapp-row"><div class="calendar-time">${hora}</div>`; for(const prof of profs){const eventos=turnos.filter(t=>t.fecha===desde && String(t.hora).slice(0,5)===hora && t.profesional===prof); html+=`<div class="slot ${eventos.length?'busy':'free'}">${eventos.map(t=>`<button class="event drapp-event ${estadoClass(t.estado)}" onclick="abrirTurno(${t.id})"><b>${esc(t.paciente_nombre)}</b><small>${esc(t.especialidad)}</small><small>${esc(t.telefono||'')}</small></button>`).join('')}</div>`;} html+='</div>';} html+='</div>'; if(cal)cal.innerHTML=html; return;} const dias=Array.from({length:1},(_,i)=>addDays(desde,i)); const cols=dias.length; let html=`<div class="calendar-grid" style="--cols:${cols}"><div class="calendar-head"><div>Hora</div>${dias.map(d=>`<div>${diaNombre(d)}</div>`).join('')}</div>`; for(const hora of times()){html+=`<div class="calendar-row"><div class="calendar-time">${hora}</div>`; for(const dia of dias){const eventos=turnos.filter(t=>t.fecha===dia && String(t.hora).slice(0,5)===hora); html+=`<div>${eventos.map(t=>`<button class="event" onclick="abrirTurno(${t.id})"><b>${esc(t.paciente_nombre)}</b><small>${esc(t.profesional)}</small><small>${esc(t.especialidad)}</small><small>${esc(t.telefono||'')}</small></button>`).join('')}</div>`;} html+='</div>';} html+='</div>'; if(cal)cal.innerHTML=html;}
 async function loadConfig(){if(!$('profBody'))return; guard(); await llenarSelectsConfig(); await listarProfesionales(); await listarEspecialidades(); await listarHorarios();}
@@ -241,4 +286,4 @@ async function crearArchivoFull(e){
   await cargarArchivosFull(pacienteId);
 }
 
-document.addEventListener('DOMContentLoaded',()=>{if($('agendaDesde')) $('agendaDesde').value=today(); loadTurnosForm(); agenda(); pacientes(); loadConfig(); $('turnoForm')?.addEventListener('submit',reservar); $('fecha')?.addEventListener('change',horariosOcupados); $('profesional')?.addEventListener('change',horariosOcupados); $('loginForm')?.addEventListener('submit',login); $('agendaBuscar')?.addEventListener('click',agenda); $('diaAnterior')?.addEventListener('click',()=>{const d=$('agendaDesde'); d.value=addDays(d.value||today(),-1); agenda();}); $('diaHoy')?.addEventListener('click',()=>{const d=$('agendaDesde'); d.value=today(); agenda();}); $('diaSiguiente')?.addEventListener('click',()=>{const d=$('agendaDesde'); d.value=addDays(d.value||today(),1); agenda();}); $('agendaProfesional')?.addEventListener('change',agenda); $('agendaVista')?.addEventListener('change',agenda); $('pacienteForm')?.addEventListener('submit',crearPaciente); $('histForm')?.addEventListener('submit',crearHistoria); $('archForm')?.addEventListener('submit',crearArchivo); loadHistoriaClinicaFull(); $('historiaFullForm')?.addEventListener('submit',crearHistoriaFull); $('archivoFullForm')?.addEventListener('submit',crearArchivoFull); $('profForm')?.addEventListener('submit',crearProfesional); $('espForm')?.addEventListener('submit',crearEspecialidad); $('horForm')?.addEventListener('submit',crearHorario);});
+document.addEventListener('DOMContentLoaded',()=>{if($('agendaDesde')) $('agendaDesde').value=today(); loadTurnosForm(); agenda(); pacientes(); loadConfig(); $('turnoForm')?.addEventListener('submit',reservar); $('cancelForm')?.addEventListener('submit',buscarTurnosCancelar); $('fecha')?.addEventListener('change',horariosOcupados); $('profesional')?.addEventListener('change',horariosOcupados); $('loginForm')?.addEventListener('submit',login); $('agendaBuscar')?.addEventListener('click',agenda); $('diaAnterior')?.addEventListener('click',()=>{const d=$('agendaDesde'); d.value=addDays(d.value||today(),-1); agenda();}); $('diaHoy')?.addEventListener('click',()=>{const d=$('agendaDesde'); d.value=today(); agenda();}); $('diaSiguiente')?.addEventListener('click',()=>{const d=$('agendaDesde'); d.value=addDays(d.value||today(),1); agenda();}); $('agendaProfesional')?.addEventListener('change',agenda); $('agendaVista')?.addEventListener('change',agenda); $('pacienteForm')?.addEventListener('submit',crearPaciente); $('histForm')?.addEventListener('submit',crearHistoria); $('archForm')?.addEventListener('submit',crearArchivo); loadHistoriaClinicaFull(); $('historiaFullForm')?.addEventListener('submit',crearHistoriaFull); $('archivoFullForm')?.addEventListener('submit',crearArchivoFull); $('profForm')?.addEventListener('submit',crearProfesional); $('espForm')?.addEventListener('submit',crearEspecialidad); $('horForm')?.addEventListener('submit',crearHorario);});
