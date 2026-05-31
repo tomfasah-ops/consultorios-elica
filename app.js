@@ -1067,7 +1067,7 @@ async function mostrarBarraProfesionalHC(){
   `;
 
   const main=document.querySelector('main.wrap') || document.body;
-  main.insertBefore(barra, main.firstChild);
+  document.body.appendChild(barra);
 
   if(!document.getElementById('profesionalHCStyles')){
     const st=document.createElement('style');
