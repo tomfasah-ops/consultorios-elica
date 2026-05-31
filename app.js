@@ -119,6 +119,10 @@ function prepararMiniCalendarioTurnos(){
       .mini-calendario-turnos{margin-top:10px;padding:12px;border:1px solid #dbe4ea;border-radius:14px;background:#f8fafc}
       .mini-cal-title{margin:0 0 10px;color:#475569;font-size:13px;font-weight:700}
       .mini-cal-grid{display:grid;grid-template-columns:repeat(7,minmax(38px,1fr));gap:6px}
+
+      .mini-cal-month{text-align:center;color:#0f172a;margin-bottom:4px;padding:4px;font-size:14px}
+      .mini-cal-weekday{text-align:center;font-size:11px;font-weight:800;color:#475569;padding:4px 0}
+      .mini-cal-empty{min-height:36px}
       .mini-cal-dia{border:1px solid #dbe4ea;border-radius:10px;padding:8px 4px;text-align:center;font-size:12px;background:#e5e7eb;color:#64748b;cursor:not-allowed}
       .mini-cal-dia b{display:block;font-size:14px;color:inherit}
       .mini-cal-dia small{display:block;font-size:10px;margin-top:2px}
@@ -151,16 +155,28 @@ async function renderMiniCalendarioTurnos(){
     return;
   }
 
-  const hoy=new Date();
-  hoy.setHours(0,0,0,0);
+  const base = fechaInput.value ? new Date(fechaInput.value+'T00:00:00') : new Date();
+  const year = base.getFullYear();
+  const month = base.getMonth();
 
+  const primerDiaMes = new Date(year, month, 1);
+  const ultimoDiaMes = new Date(year, month + 1, 0);
+  const diasDelMes = ultimoDiaMes.getDate();
+
+  const nombreMes = base.toLocaleDateString('es-AR',{month:'long', year:'numeric'});
   const seleccionado=fechaInput.value;
-  let html='';
 
-  for(let i=0;i<28;i++){
-    const d=new Date(hoy);
-    d.setDate(hoy.getDate()+i);
+  let html=`<div class="mini-cal-month" style="grid-column:1/-1"><b>${nombreMes.charAt(0).toUpperCase()+nombreMes.slice(1)}</b></div>`;
 
+  const encabezados=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+  html += encabezados.map(d=>`<div class="mini-cal-weekday">${d}</div>`).join('');
+
+  for(let i=0;i<primerDiaMes.getDay();i++){
+    html += '<div class="mini-cal-empty"></div>';
+  }
+
+  for(let diaNum=1; diaNum<=diasDelMes; diaNum++){
+    const d=new Date(year, month, diaNum);
     const iso=d.toISOString().slice(0,10);
     const diaNombre=DIAS_MAP[d.getDay()];
     const habilitado=diasHabilitados.has(diaNombre);
@@ -168,7 +184,7 @@ async function renderMiniCalendarioTurnos(){
     const seleccionadoClase=iso===seleccionado?' seleccionado':'';
 
     html+=`<button type="button" class="mini-cal-dia ${clase}${seleccionadoClase}" ${habilitado?`onclick="seleccionarDiaTurno('${iso}')"`:'disabled'} title="${habilitado?'Día disponible':'El profesional no atiende este día'}">
-      <b>${String(d.getDate()).padStart(2,'0')}</b>
+      <b>${String(diaNum).padStart(2,'0')}</b>
       <small>${diaNombre.slice(0,3)}</small>
     </button>`;
   }
