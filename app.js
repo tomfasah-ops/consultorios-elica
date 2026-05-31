@@ -1042,7 +1042,7 @@ async function mostrarBarraProfesionalHC(){
 
   const barra=document.createElement('section');
   barra.id='barraProfesionalHC';
-  barra.className='card profesional-hc-barra';
+  barra.className='profesional-hc-barra';
   barra.innerHTML=`
     <div class="prof-hc-status">
       <div>
@@ -1115,7 +1115,6 @@ async function finalizarAtencionProfesional(){
     return;
   }
 
-  localStorage.setItem('elica_profesional_volver_fecha', today());
   location.href='profesional-agenda.html';
 }
 
