@@ -417,7 +417,7 @@ async function cargarAgendaProfesional(){
 
   const profesional=localStorage.getItem('elica_profesional_nombre')||'';
   const especialidad=localStorage.getItem('elica_profesional_especialidad')||'';
-  const fecha=$('profAgendaFecha')?.value || today();
+  const fecha=$('profAgendaFecha')?.value || localStorage.getItem('elica_profesional_volver_fecha') || today();
 
   if($('profNombreTitulo')) $('profNombreTitulo').textContent=profesional;
   if($('profEspecialidadTitulo')) $('profEspecialidadTitulo').textContent=especialidad || 'Profesional';
@@ -1014,6 +1014,128 @@ function mostrarTabHC(tab){
   document.querySelectorAll('.hc-tabs-page .tab').forEach(b=>b.classList.toggle('active', b.dataset.tab===tab));
   document.querySelectorAll('.hc-tab-content').forEach(s=>s.classList.toggle('active', s.id==='tab-'+tab));
 }
+
+async function contarPacientesEnEsperaProfesional(){
+  const profesional=localStorage.getItem('elica_profesional_nombre')||'';
+  if(!profesional) return {total:0, lista:[]};
+
+  const {data,error}=await sb.from('turnos')
+    .select('*')
+    .eq('profesional',profesional)
+    .eq('fecha',today())
+    .eq('estado','en_espera')
+    .order('hora',{ascending:true});
+
+  if(error) return {total:0, lista:[]};
+  return {total:(data||[]).length, lista:data||[]};
+}
+
+async function mostrarBarraProfesionalHC(){
+  if(!$('hcNombre')) return;
+  if(!authProfesional()) return;
+
+  const existente=$('barraProfesionalHC');
+  if(existente) existente.remove();
+
+  const profesional=localStorage.getItem('elica_profesional_nombre')||'Profesional';
+  const espera=await contarPacientesEnEsperaProfesional();
+
+  const barra=document.createElement('section');
+  barra.id='barraProfesionalHC';
+  barra.className='card profesional-hc-barra';
+  barra.innerHTML=`
+    <div class="prof-hc-status">
+      <div>
+        <span class="muted">Atendiendo como</span>
+        <h3>${esc(profesional)}</h3>
+      </div>
+      <div class="espera-box">
+        <b>${espera.total}</b>
+        <span>pacientes en espera</span>
+      </div>
+    </div>
+    ${espera.lista.length?`
+      <div class="espera-lista">
+        ${espera.lista.slice(0,4).map(t=>`
+          <div class="espera-chip">
+            <b>${esc(String(t.hora).slice(0,5))}</b>
+            <span>${esc(t.paciente_nombre)}</span>
+          </div>
+        `).join('')}
+      </div>
+    `:'<p class="muted">No hay pacientes marcados en sala de espera en este momento.</p>'}
+  `;
+
+  const main=document.querySelector('main.wrap') || document.body;
+  main.insertBefore(barra, main.firstChild);
+
+  if(!document.getElementById('profesionalHCStyles')){
+    const st=document.createElement('style');
+    st.id='profesionalHCStyles';
+    st.textContent=`
+      .profesional-hc-barra{border:1px solid #bae6fd;background:linear-gradient(135deg,#f0f9ff,#ffffff);margin-bottom:16px}
+      .prof-hc-status{display:flex;justify-content:space-between;gap:16px;align-items:center}
+      .prof-hc-status h3{margin:4px 0 0;color:#075985}
+      .espera-box{min-width:145px;text-align:center;border-radius:18px;background:#fff7ed;border:1px solid #fdba74;padding:12px}
+      .espera-box b{display:block;font-size:30px;color:#ea580c}
+      .espera-box span{font-size:13px;color:#9a3412;font-weight:700}
+      .espera-lista{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-top:14px}
+      .espera-chip{border-radius:14px;background:#fff;border:1px solid #fed7aa;padding:10px}
+      .espera-chip b{color:#ea580c;margin-right:6px}
+      .espera-chip span{color:#334155}
+      .finalizar-atencion-btn{background:#16a34a!important;color:white!important;border-color:#16a34a!important}
+      @media(max-width:720px){.prof-hc-status{flex-direction:column;align-items:stretch}.espera-box{text-align:left}}
+    `;
+    document.head.appendChild(st);
+  }
+}
+
+async function finalizarAtencionProfesional(){
+  if(!authProfesional()){
+    alert('La sesión profesional no está activa.');
+    location.href='login-centro.html';
+    return;
+  }
+
+  const params=new URLSearchParams(location.search);
+  const turnoId=params.get('turno');
+  const pacienteId=$('hcPacienteId')?.value;
+
+  if(!turnoId){
+    alert('No se encontró el turno asociado a esta atención.');
+    return;
+  }
+
+  const {error}=await sb.from('turnos')
+    .update({estado:'atendido'})
+    .eq('id',turnoId);
+
+  if(error){
+    alert('No se pudo finalizar la atención: '+error.message);
+    return;
+  }
+
+  localStorage.setItem('elica_profesional_volver_fecha', today());
+  location.href='profesional-agenda.html';
+}
+
+function agregarBotonFinalizarAtencion(){
+  if(!$('historiaFullForm') || $('finalizarAtencionBtn')) return;
+  if(!authProfesional()) return;
+
+  const btn=document.createElement('button');
+  btn.id='finalizarAtencionBtn';
+  btn.type='button';
+  btn.className='btn finalizar-atencion-btn';
+  btn.textContent='FINALIZAR ATENCIÓN';
+  btn.onclick=finalizarAtencionProfesional;
+
+  const form=$('historiaFullForm');
+  form.appendChild(document.createElement('br'));
+  form.appendChild(document.createElement('br'));
+  form.appendChild(btn);
+}
+
 async function loadHistoriaClinicaFull(){
   if(!$('hcNombre')) return;
   guardCentroOProfesional();
@@ -1032,6 +1154,8 @@ async function loadHistoriaClinicaFull(){
   await cargarEvolucionesFull(id);
   await cargarTurnosPacienteFull(p);
   await cargarArchivosFull(id);
+  await mostrarBarraProfesionalHC();
+  agregarBotonFinalizarAtencion();
 }
 async function cargarEvolucionesFull(id){
   const {data,error}=await sb.from('historias_clinicas').select('*').eq('paciente_id',id).order('fecha',{ascending:false}).order('created_at',{ascending:false});
@@ -1052,14 +1176,36 @@ async function cargarArchivosFull(id){
 }
 async function crearHistoriaFull(e){
   e.preventDefault();
+
   const pacienteId=$('hcPacienteId').value;
-  const row={paciente_id:pacienteId,profesional:$('fullProfesional').value.trim(),especialidad:$('fullEspecialidad').value.trim(),motivo:$('fullMotivo').value.trim(),evolucion:$('fullEvolucion').value.trim(),intervencion:$('fullIntervencion').value.trim(),objetivos:$('fullObjetivos').value.trim(),fecha:today()};
-  if(!row.motivo && !row.evolucion && !row.intervencion && !row.objetivos){show('hcMsg','Escribí al menos un campo de la evolución.','error'); return;}
+  const row={
+    paciente_id:pacienteId,
+    profesional:$('fullProfesional').value.trim(),
+    especialidad:$('fullEspecialidad').value.trim(),
+    motivo:$('fullMotivo').value.trim(),
+    evolucion:$('fullEvolucion').value.trim(),
+    intervencion:$('fullIntervencion').value.trim(),
+    objetivos:$('fullObjetivos').value.trim(),
+    fecha:today()
+  };
+
+  if(!row.motivo && !row.evolucion && !row.intervencion && !row.objetivos){
+    show('hcMsg','Escribí al menos un campo de la evolución.','error');
+    return;
+  }
+
   const {error}=await sb.from('historias_clinicas').insert(row);
-  if(error){show('hcMsg',error.message,'error'); return;}
-  show('hcMsg','Evolución guardada correctamente.','success');
+
+  if(error){
+    show('hcMsg',error.message,'error');
+    return;
+  }
+
+  show('hcMsg','Evolución guardada correctamente. Si terminaste, tocá FINALIZAR ATENCIÓN para volver a tu agenda.','success');
   e.target.reset();
   await cargarEvolucionesFull(pacienteId);
+  await mostrarBarraProfesionalHC();
+  agregarBotonFinalizarAtencion();
 }
 async function crearArchivoFull(e){
   e.preventDefault();

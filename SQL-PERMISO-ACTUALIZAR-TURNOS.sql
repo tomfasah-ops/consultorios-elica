@@ -1,6 +1,4 @@
--- Ejecutar en Supabase si todavía no actualiza estados desde la app.
--- Permite que la app actualice turnos para marcar sala de espera / atendido.
-
+-- Ejecutar en Supabase si FINALIZAR ATENCIÓN o sala de espera no actualiza.
 drop policy if exists "permitir_actualizar_turnos" on public.turnos;
 
 create policy "permitir_actualizar_turnos"
