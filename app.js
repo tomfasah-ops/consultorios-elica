@@ -47,14 +47,55 @@ function evolucionCard(h){
 async function loadTurnosForm(){
   const esp=$('especialidad'), prof=$('profesional'), hora=$('hora');
   if(!esp)return;
+
+  const resetHorarios=()=>{
+    if(!hora)return;
+    hora.innerHTML='<option value="">Seleccionar horario</option>';
+    times().forEach(t=>hora.add(new Option(t,t)));
+  };
+
+  const normalizar=v=>String(v||'').trim().toLowerCase();
+
   esp.innerHTML='<option value="">Seleccionar especialidad</option>';
-  prof.innerHTML='<option value="">Seleccionar profesional</option>';
-  hora.innerHTML='<option value="">Seleccionar horario</option>';
-  times().forEach(t=>hora.add(new Option(t,t)));
-  (await getEspecialidades()).forEach(e=>esp.add(new Option(e.nombre,e.nombre)));
-  (await getProfesionales()).forEach(p=>prof.add(new Option(p.especialidad?`${p.nombre} - ${p.especialidad}`:p.nombre,p.nombre)));
+  prof.innerHTML='<option value="">Primero elegí una especialidad</option>';
+  resetHorarios();
+
+  const especialidades=await getEspecialidades();
+  const profesionales=await getProfesionales();
+
+  especialidades.forEach(e=>esp.add(new Option(e.nombre,e.nombre)));
+
+  const cargarProfesionalesPorEspecialidad=async ()=>{
+    const especialidad=esp.value;
+    prof.innerHTML='<option value="">Seleccionar profesional</option>';
+    resetHorarios();
+
+    if(!especialidad){
+      prof.innerHTML='<option value="">Primero elegí una especialidad</option>';
+      await actualizarInfoDiasAtencion();
+      return;
+    }
+
+    const filtrados=profesionales.filter(p=>normalizar(p.especialidad)===normalizar(especialidad));
+
+    if(!filtrados.length){
+      prof.innerHTML='<option value="">No hay profesionales para esta especialidad</option>';
+      await actualizarInfoDiasAtencion();
+      return;
+    }
+
+    filtrados.forEach(p=>prof.add(new Option(p.nombre,p.nombre)));
+
+    if(filtrados.length===1){
+      prof.value=filtrados[0].nombre;
+    }
+
+    await horariosOcupados();
+  };
+
   prepararInfoDiasAtencion();
-  await actualizarInfoDiasAtencion();
+  esp.addEventListener('change',cargarProfesionalesPorEspecialidad);
+  await cargarProfesionalesPorEspecialidad();
 }
 
 const DIAS_MAP={0:'Domingo',1:'Lunes',2:'Martes',3:'Miércoles',4:'Jueves',5:'Viernes',6:'Sábado'};
