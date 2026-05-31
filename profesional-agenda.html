@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Mi agenda | Consultorios Elica</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="agenda-page">
+<header class="top compact-top"><h1>Mi agenda profesional</h1><p id="profEspecialidadTitulo">Consultorios Elica</p></header>
+<main class="agenda-layout">
+  <aside class="sidebar-panel">
+    <div class="brand-box"><b id="profNombreTitulo">Profesional</b><span>Agenda de pacientes</span></div>
+    <a class="side-link active" href="profesional-agenda.html">Mi agenda</a>
+    <button class="side-link danger-link" onclick="logoutProfesional()">Salir</button>
+  </aside>
+  <section class="agenda-main">
+    <div class="card slim-card agenda-toolbar">
+      <div><h2>Pacientes del día</h2><p class="muted">Tocá un paciente para abrir historia clínica o marcarlo como atendido.</p></div>
+      <div class="toolbar-actions"><input type="date" id="profAgendaFecha"><button class="btn" id="profAgendaActualizar">Actualizar</button></div>
+    </div>
+    <div id="profAgendaMsg" class="msg"></div>
+    <div class="agenda-stats" id="profAgendaStats"></div>
+    <div id="profAgendaBody"></div>
+  </section>
+</main>
+<div id="turnoModal" class="modal hidden"><div class="modal-card"><button class="modal-close" onclick="cerrarModal()">×</button><h2 id="modalPaciente">Turno</h2><div id="modalContenido"></div></div></div>
+<script src="app.js"></script>
+</body>
+</html>

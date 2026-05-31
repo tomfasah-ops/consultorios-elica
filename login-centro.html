@@ -1,1 +1,40 @@
-<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Trabajo en el centro | Consultorios Elica</title><link rel="stylesheet" href="styles.css"><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script></head><body><header class="top"><h1>Trabajo en el centro</h1><p>Acceso privado del equipo</p></header><main class="wrap"><section class="card" style="max-width:480px;margin:auto"><h2>Ingresar</h2><form id="loginForm"><label>Usuario</label><input id="usuario" type="email" placeholder="admin@elica.com" required><label>Contraseña</label><input id="clave" type="password" required><br><br><button class="btn full" type="submit">Ingresar</button></form><div id="loginMsg" class="msg"></div><p class="small">Usuario: admin@elica.com · Clave: Elica2026!</p></section></main><script src="app.js"></script></body></html>
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Trabajo en el centro | Consultorios Elica</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+<header class="top"><h1>Trabajo en el centro</h1><p>Elegí cómo querés ingresar</p></header>
+<main class="wrap">
+  <section class="grid panel-login-choice">
+    <article class="card">
+      <h2>Administración</h2>
+      <p class="login-subtitle">Acceso completo al panel del centro, configuración, agenda general, profesionales y pacientes.</p>
+      <form id="loginForm">
+        <label>Usuario</label><input id="usuario" type="email" placeholder="admin@elica.com" required>
+        <label>Contraseña</label><input id="clave" type="password" required>
+        <br><br><button class="btn full" type="submit">Ingresar a administración</button>
+      </form>
+      <div id="loginMsg" class="msg"></div>
+    </article>
+
+    <article class="card">
+      <h2>Soy profesional</h2>
+      <p class="login-subtitle">Acceso del profesional para ver su agenda, abrir historias clínicas y marcar pacientes atendidos.</p>
+      <form id="profLoginForm">
+        <label>Usuario profesional</label><input id="profLoginUsuario" type="text" placeholder="Ej: ana.perez" required>
+        <label>Contraseña</label><input id="profLoginClave" type="password" required>
+        <br><br><button class="btn secondary full" type="submit">Ingresar como profesional</button>
+      </form>
+      <div id="profLoginMsg" class="msg"></div>
+    </article>
+  </section>
+  <p class="center small"><a href="index.html">← Volver al inicio</a></p>
+</main>
+<script src="app.js"></script>
+</body>
+</html>
