@@ -572,7 +572,7 @@ async function abrirHistoriaDesdeTurno(turnoId){
   if(!t) return;
   try{
     const paciente=await obtenerOCrearPacienteDesdeTurno(t);
-    const params=new URLSearchParams({id:paciente.id, turno:turnoId, profesional:t.profesional||'', especialidad:t.especialidad||''});
+    localStorage.setItem('elica_profesional_volver_fecha',$('profAgendaFecha')?.value||today()); const params=new URLSearchParams({id:paciente.id, turno:turnoId, profesional:t.profesional||'', especialidad:t.especialidad||''});
     location.href='historia-clinica.html?'+params.toString();
   }catch(err){
     const box=$('historiaAgendaBox');
