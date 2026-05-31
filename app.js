@@ -48,54 +48,40 @@ async function loadTurnosForm(){
   const esp=$('especialidad'), prof=$('profesional'), hora=$('hora');
   if(!esp)return;
 
-  const resetHorarios=()=>{
-    if(!hora)return;
-    hora.innerHTML='<option value="">Seleccionar horario</option>';
-    times().forEach(t=>hora.add(new Option(t,t)));
-  };
-
-  const normalizar=v=>String(v||'').trim().toLowerCase();
-
   esp.innerHTML='<option value="">Seleccionar especialidad</option>';
-  prof.innerHTML='<option value="">Primero elegí una especialidad</option>';
-  resetHorarios();
+  prof.innerHTML='<option value="">Primero seleccioná una especialidad</option>';
+  hora.innerHTML='<option value="">Seleccionar horario</option>';
 
-  const especialidades=await getEspecialidades();
-  const profesionales=await getProfesionales();
+  times().forEach(t=>hora.add(new Option(t,t)));
+
+  const especialidades = await getEspecialidades();
+  const profesionales = await getProfesionales();
 
   especialidades.forEach(e=>esp.add(new Option(e.nombre,e.nombre)));
 
-  const cargarProfesionalesPorEspecialidad=async ()=>{
-    const especialidad=esp.value;
+  esp.addEventListener('change', async ()=>{
     prof.innerHTML='<option value="">Seleccionar profesional</option>';
-    resetHorarios();
+    hora.innerHTML='<option value="">Seleccionar horario</option>';
+    times().forEach(t=>hora.add(new Option(t,t)));
 
-    if(!especialidad){
-      prof.innerHTML='<option value="">Primero elegí una especialidad</option>';
-      await actualizarInfoDiasAtencion();
-      return;
+    const seleccionada = esp.value;
+
+    profesionales
+      .filter(p=>String(p.especialidad||'').trim().toLowerCase()===String(seleccionada||'').trim().toLowerCase())
+      .forEach(p=>prof.add(new Option(p.nombre,p.nombre)));
+
+    if(prof.options.length===1){
+      prof.innerHTML='<option value="">No hay profesionales cargados para esta especialidad</option>';
     }
 
-    const filtrados=profesionales.filter(p=>normalizar(p.especialidad)===normalizar(especialidad));
-
-    if(!filtrados.length){
-      prof.innerHTML='<option value="">No hay profesionales para esta especialidad</option>';
-      await actualizarInfoDiasAtencion();
-      return;
-    }
-
-    filtrados.forEach(p=>prof.add(new Option(p.nombre,p.nombre)));
-
-    if(filtrados.length===1){
-      prof.value=filtrados[0].nombre;
-    }
-
-    await horariosOcupados();
-  };
+    await actualizarInfoDiasAtencion();
+    await renderMiniCalendarioTurnos();
+  });
 
   prepararInfoDiasAtencion();
-  esp.addEventListener('change',cargarProfesionalesPorEspecialidad);
-  await cargarProfesionalesPorEspecialidad();
+  prepararMiniCalendarioTurnos();
+  await actualizarInfoDiasAtencion();
+  await renderMiniCalendarioTurnos();
 }
 
 const DIAS_MAP={0:'Domingo',1:'Lunes',2:'Martes',3:'Miércoles',4:'Jueves',5:'Viernes',6:'Sábado'};
@@ -113,6 +99,89 @@ function prepararInfoDiasAtencion(){
   box.className='msg success';
   box.style.display='none';
   prof.closest('div')?.appendChild(box);
+}
+
+function prepararMiniCalendarioTurnos(){
+  const fecha=$('fecha');
+  if(!fecha || $('miniCalendarioTurnos')) return;
+
+  const contenedor=document.createElement('div');
+  contenedor.id='miniCalendarioTurnos';
+  contenedor.className='mini-calendario-turnos';
+  contenedor.innerHTML='<p class="mini-cal-title">Elegí un día habilitado para el profesional.</p><div id="miniCalendarioDias" class="mini-cal-grid"></div>';
+
+  fecha.closest('div')?.appendChild(contenedor);
+
+  if(!document.getElementById('miniCalendarioTurnosStyles')){
+    const style=document.createElement('style');
+    style.id='miniCalendarioTurnosStyles';
+    style.textContent=`
+      .mini-calendario-turnos{margin-top:10px;padding:12px;border:1px solid #dbe4ea;border-radius:14px;background:#f8fafc}
+      .mini-cal-title{margin:0 0 10px;color:#475569;font-size:13px;font-weight:700}
+      .mini-cal-grid{display:grid;grid-template-columns:repeat(7,minmax(38px,1fr));gap:6px}
+      .mini-cal-dia{border:1px solid #dbe4ea;border-radius:10px;padding:8px 4px;text-align:center;font-size:12px;background:#e5e7eb;color:#64748b;cursor:not-allowed}
+      .mini-cal-dia b{display:block;font-size:14px;color:inherit}
+      .mini-cal-dia small{display:block;font-size:10px;margin-top:2px}
+      .mini-cal-dia.habilitado{background:#dcfce7;border-color:#86efac;color:#166534;cursor:pointer;font-weight:700}
+      .mini-cal-dia.habilitado:hover{outline:2px solid #22c55e}
+      .mini-cal-dia.seleccionado{background:#087ea4;border-color:#087ea4;color:#fff}
+      .mini-cal-dia.bloqueado{background:#f1f5f9;border-color:#cbd5e1;color:#94a3b8}
+      @media(max-width:720px){.mini-cal-grid{grid-template-columns:repeat(4,1fr)}}
+    `;
+    document.head.appendChild(style);
+  }
+}
+
+async function renderMiniCalendarioTurnos(){
+  const grid=$('miniCalendarioDias');
+  const fechaInput=$('fecha');
+  const profesional=$('profesional')?.value;
+  if(!grid || !fechaInput) return;
+
+  if(!profesional){
+    grid.innerHTML='<div class="empty-state" style="grid-column:1/-1">Seleccioná una especialidad y un profesional para ver sus días disponibles.</div>';
+    return;
+  }
+
+  const horarios=await horariosDelProfesional(profesional);
+  const diasHabilitados=new Set(horarios.map(h=>h.dia_semana).filter(Boolean));
+
+  if(!diasHabilitados.size){
+    grid.innerHTML='<div class="empty-state" style="grid-column:1/-1">Este profesional todavía no tiene días de atención cargados.</div>';
+    return;
+  }
+
+  const hoy=new Date();
+  hoy.setHours(0,0,0,0);
+
+  const seleccionado=fechaInput.value;
+  let html='';
+
+  for(let i=0;i<28;i++){
+    const d=new Date(hoy);
+    d.setDate(hoy.getDate()+i);
+
+    const iso=d.toISOString().slice(0,10);
+    const diaNombre=DIAS_MAP[d.getDay()];
+    const habilitado=diasHabilitados.has(diaNombre);
+    const clase=habilitado?'habilitado':'bloqueado';
+    const seleccionadoClase=iso===seleccionado?' seleccionado':'';
+
+    html+=`<button type="button" class="mini-cal-dia ${clase}${seleccionadoClase}" ${habilitado?`onclick="seleccionarDiaTurno('${iso}')"`:'disabled'} title="${habilitado?'Día disponible':'El profesional no atiende este día'}">
+      <b>${String(d.getDate()).padStart(2,'0')}</b>
+      <small>${diaNombre.slice(0,3)}</small>
+    </button>`;
+  }
+
+  grid.innerHTML=html;
+}
+
+async function seleccionarDiaTurno(fecha){
+  const fechaInput=$('fecha');
+  if(!fechaInput) return;
+  fechaInput.value=fecha;
+  await horariosOcupados();
+  await renderMiniCalendarioTurnos();
 }
 
 async function horariosDelProfesional(profesional){
@@ -160,7 +229,10 @@ async function horariosOcupados(){
 
   const horarios=await actualizarInfoDiasAtencion();
 
-  if(!fecha||!profesional) return;
+  if(!fecha||!profesional){
+    await renderMiniCalendarioTurnos();
+    return;
+  }
 
   const dia=diaSemanaDeFecha(fecha);
   const horariosDia=horarios.filter(h=>h.dia_semana===dia);
@@ -168,6 +240,7 @@ async function horariosOcupados(){
   if(!horariosDia.length){
     [...hora.options].forEach(o=>{if(o.value)o.disabled=true;});
     show('msg',`El profesional seleccionado no atiende los días ${dia}. Elegí un día habilitado.`, 'error');
+    await renderMiniCalendarioTurnos();
     return;
   }
 
@@ -193,6 +266,8 @@ async function horariosOcupados(){
     o.disabled=fueraHorario||ocupado;
     o.textContent=fueraHorario?`${o.value} - no atiende`:ocupado?`${o.value} - ocupado`:o.value;
   });
+
+  await renderMiniCalendarioTurnos();
 }
 
 async function reservar(e){
