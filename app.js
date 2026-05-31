@@ -74,6 +74,8 @@ async function loadTurnosForm(){
       prof.innerHTML='<option value="">No hay profesionales cargados para esta especialidad</option>';
     }
 
+    const resumen=$('fechaSeleccionadaResumen'); if(resumen) resumen.remove();
+    const box=$('miniCalendarioTurnos'); if(box) box.classList.remove('mini-cal-colapsado');
     await actualizarInfoDiasAtencion();
     await renderMiniCalendarioTurnos();
   });
@@ -130,6 +132,16 @@ function prepararMiniCalendarioTurnos(){
       .mini-cal-dia.habilitado:hover{outline:2px solid #22c55e}
       .mini-cal-dia.seleccionado{background:#087ea4;border-color:#087ea4;color:#fff}
       .mini-cal-dia.bloqueado{background:#f1f5f9;border-color:#cbd5e1;color:#94a3b8}
+
+      .mini-cal-colapsado{display:none!important}
+      .fecha-seleccionada-resumen{margin-top:10px;padding:12px 14px;border-radius:14px;background:#e8f7ff;border:1px solid #a7dff3;color:#075985;font-size:14px;line-height:1.35}
+      .mini-cal-cambiar{margin-left:8px;border:0;border-radius:999px;background:#087ea4;color:white;padding:6px 10px;font-weight:700;cursor:pointer}
+      #turnoForm .grid{align-items:start;row-gap:18px}
+      #turnoForm label{margin-top:6px}
+      #hora{margin-top:2px}
+      #msg{margin-top:18px}
+      #turnoForm textarea{margin-top:6px}
+      @media(max-width:720px){.mini-cal-cambiar{display:block;margin:10px 0 0;width:100%}}
       @media(max-width:720px){.mini-cal-grid{grid-template-columns:repeat(4,1fr)}}
     `;
     document.head.appendChild(style);
@@ -198,6 +210,30 @@ async function seleccionarDiaTurno(fecha){
   fechaInput.value=fecha;
   await horariosOcupados();
   await renderMiniCalendarioTurnos();
+
+  const box=$('miniCalendarioTurnos');
+  const d=new Date(fecha+'T00:00:00');
+  const fechaBonita=d.toLocaleDateString('es-AR',{weekday:'long',day:'2-digit',month:'long',year:'numeric'});
+
+  if(box){
+    box.classList.add('mini-cal-colapsado');
+    let resumen=$('fechaSeleccionadaResumen');
+    if(!resumen){
+      resumen=document.createElement('div');
+      resumen.id='fechaSeleccionadaResumen';
+      resumen.className='fecha-seleccionada-resumen';
+      box.parentNode.insertBefore(resumen, box.nextSibling);
+    }
+    resumen.innerHTML=`<b>Fecha seleccionada:</b> ${fechaBonita} <button type="button" class="mini-cal-cambiar" onclick="abrirMiniCalendarioTurnos()">Cambiar fecha</button>`;
+  }
+
+  const hora=$('hora');
+  if(hora) hora.scrollIntoView({behavior:'smooth', block:'center'});
+}
+
+function abrirMiniCalendarioTurnos(){
+  const box=$('miniCalendarioTurnos');
+  if(box) box.classList.remove('mini-cal-colapsado');
 }
 
 async function horariosDelProfesional(profesional){
@@ -564,4 +600,4 @@ async function crearArchivoFull(e){
   await cargarArchivosFull(pacienteId);
 }
 
-document.addEventListener('DOMContentLoaded',()=>{if($('agendaDesde')) $('agendaDesde').value=today(); loadTurnosForm(); agenda(); pacientes(); loadConfig(); $('turnoForm')?.addEventListener('submit',reservar); $('cancelForm')?.addEventListener('submit',buscarTurnosCancelar); $('fecha')?.addEventListener('change',horariosOcupados); $('profesional')?.addEventListener('change',horariosOcupados); $('loginForm')?.addEventListener('submit',login); $('agendaBuscar')?.addEventListener('click',agenda); $('diaAnterior')?.addEventListener('click',()=>{const d=$('agendaDesde'); d.value=addDays(d.value||today(),-1); agenda();}); $('diaHoy')?.addEventListener('click',()=>{const d=$('agendaDesde'); d.value=today(); agenda();}); $('diaSiguiente')?.addEventListener('click',()=>{const d=$('agendaDesde'); d.value=addDays(d.value||today(),1); agenda();}); $('agendaProfesional')?.addEventListener('change',agenda); $('agendaVista')?.addEventListener('change',agenda); $('pacienteForm')?.addEventListener('submit',crearPaciente); $('histForm')?.addEventListener('submit',crearHistoria); $('archForm')?.addEventListener('submit',crearArchivo); loadHistoriaClinicaFull(); $('historiaFullForm')?.addEventListener('submit',crearHistoriaFull); $('archivoFullForm')?.addEventListener('submit',crearArchivoFull); $('profForm')?.addEventListener('submit',crearProfesional); $('espForm')?.addEventListener('submit',crearEspecialidad); $('horForm')?.addEventListener('submit',crearHorario);});
+document.addEventListener('DOMContentLoaded',()=>{if($('agendaDesde')) $('agendaDesde').value=today(); loadTurnosForm(); agenda(); pacientes(); loadConfig(); $('turnoForm')?.addEventListener('submit',reservar); $('cancelForm')?.addEventListener('submit',buscarTurnosCancelar); $('fecha')?.addEventListener('change',horariosOcupados); $('profesional')?.addEventListener('change',async()=>{const resumen=$('fechaSeleccionadaResumen'); if(resumen) resumen.remove(); const box=$('miniCalendarioTurnos'); if(box) box.classList.remove('mini-cal-colapsado'); await horariosOcupados();}); $('loginForm')?.addEventListener('submit',login); $('agendaBuscar')?.addEventListener('click',agenda); $('diaAnterior')?.addEventListener('click',()=>{const d=$('agendaDesde'); d.value=addDays(d.value||today(),-1); agenda();}); $('diaHoy')?.addEventListener('click',()=>{const d=$('agendaDesde'); d.value=today(); agenda();}); $('diaSiguiente')?.addEventListener('click',()=>{const d=$('agendaDesde'); d.value=addDays(d.value||today(),1); agenda();}); $('agendaProfesional')?.addEventListener('change',agenda); $('agendaVista')?.addEventListener('change',agenda); $('pacienteForm')?.addEventListener('submit',crearPaciente); $('histForm')?.addEventListener('submit',crearHistoria); $('archForm')?.addEventListener('submit',crearArchivo); loadHistoriaClinicaFull(); $('historiaFullForm')?.addEventListener('submit',crearHistoriaFull); $('archivoFullForm')?.addEventListener('submit',crearArchivoFull); $('profForm')?.addEventListener('submit',crearProfesional); $('espForm')?.addEventListener('submit',crearEspecialidad); $('horForm')?.addEventListener('submit',crearHorario);});
