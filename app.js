@@ -1201,7 +1201,6 @@ async function crearHistoriaFull(e){
   }
 
   show('hcMsg','Evolución guardada correctamente. Si terminaste, tocá FINALIZAR ATENCIÓN para volver a tu agenda.','success');
-  e.target.reset();
   await cargarEvolucionesFull(pacienteId);
   await mostrarBarraProfesionalHC();
   agregarBotonFinalizarAtencion();
