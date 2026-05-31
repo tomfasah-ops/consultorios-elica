@@ -360,6 +360,8 @@ async function login(e){
 function authProfesional(){return localStorage.getItem('elica_profesional_ok')==='ok'}
 function guardProfesional(){if(!authProfesional()) location.href='login-centro.html'}
 function logoutProfesional(){localStorage.removeItem('elica_profesional_ok'); localStorage.removeItem('elica_profesional_nombre'); localStorage.removeItem('elica_profesional_especialidad'); location.href='login-centro.html'}
+function authCentroOProfesional(){return auth() || authProfesional()}
+function guardCentroOProfesional(){if(!authCentroOProfesional()) location.href='login-centro.html'}
 
 async function loginProfesional(e){
   e.preventDefault();
@@ -392,7 +394,25 @@ async function loginProfesional(e){
 
 async function cargarAgendaProfesional(){
   if(!$('profAgendaBody')) return;
-  if(!document.getElementById('profAgendaStyles')){const st=document.createElement('style');st.id='profAgendaStyles';st.textContent='.prof-turno-card{width:100%;display:flex;justify-content:space-between;gap:12px;align-items:center;text-align:left;border:1px solid #dbe4ea;background:#fff;border-radius:16px;padding:14px;margin-bottom:10px;cursor:pointer;box-shadow:0 4px 14px rgba(15,23,42,.05)}.prof-turno-card:hover{border-color:#087ea4}.prof-turno-card b{display:block;color:#075985}.prof-turno-card span{display:block;color:#475569;font-size:13px;margin-top:3px}.prof-turno-card.asistio{background:#ecfdf5;border-color:#86efac}.panel-login-choice .card{min-height:260px}.login-subtitle{color:#64748b;margin-top:0}';document.head.appendChild(st);}
+
+  if(!document.getElementById('profAgendaStyles')){
+    const st=document.createElement('style');
+    st.id='profAgendaStyles';
+    st.textContent=`
+      .prof-turno-card{width:100%;display:flex;justify-content:space-between;gap:12px;align-items:center;text-align:left;border:1px solid #dbe4ea;background:#fff;border-radius:16px;padding:14px;margin-bottom:10px;cursor:pointer;box-shadow:0 4px 14px rgba(15,23,42,.05)}
+      .prof-turno-card:hover{border-color:#087ea4}
+      .prof-turno-card b{display:block;color:#075985}
+      .prof-turno-card span{display:block;color:#475569;font-size:13px;margin-top:3px}
+      .prof-turno-card.espera{background:#fff7ed;border-color:#fdba74;box-shadow:0 6px 18px rgba(249,115,22,.16)}
+      .prof-turno-card.asistio{background:#ecfdf5;border-color:#86efac}
+      .pill.espera{background:#fed7aa;color:#9a3412}
+      .pill.asistio{background:#bbf7d0;color:#166534}
+      .panel-login-choice .card{min-height:260px}
+      .login-subtitle{color:#64748b;margin-top:0}
+    `;
+    document.head.appendChild(st);
+  }
+
   guardProfesional();
 
   const profesional=localStorage.getItem('elica_profesional_nombre')||'';
@@ -415,17 +435,41 @@ async function cargarAgendaProfesional(){
     return;
   }
 
-  const turnos=data||[];
+  let turnos=data||[];
+
+  // En la vida real del consultorio, lo que está en sala de espera tiene prioridad visual.
+  turnos=turnos.sort((a,b)=>{
+    const ae=estadoClass(a.estado)==='espera' ? 0 : 1;
+    const be=estadoClass(b.estado)==='espera' ? 0 : 1;
+    if(ae!==be) return ae-be;
+    return String(a.hora).localeCompare(String(b.hora));
+  });
+
   sessionStorage.setItem('turnosAgenda',JSON.stringify(turnos));
 
-  $('profAgendaStats').innerHTML=`<div class="stat-card"><b>${turnos.length}</b><span>Pacientes del día</span></div><div class="stat-card"><b>${turnos.filter(t=>estadoClass(t.estado)==='asistio').length}</b><span>Atendidos</span></div>`;
+  const enEspera=turnos.filter(t=>estadoClass(t.estado)==='espera').length;
+  const atendidos=turnos.filter(t=>estadoClass(t.estado)==='asistio').length;
 
-  $('profAgendaBody').innerHTML=turnos.map(t=>`
-    <button class="prof-turno-card ${estadoClass(t.estado)}" onclick="abrirTurnoProfesional(${t.id})">
-      <div><b>${esc(String(t.hora).slice(0,5))} hs · ${esc(t.paciente_nombre)}</b><span>${esc(t.especialidad)} · DNI: ${esc(t.dni||'No informado')}</span></div>
-      <span class="pill ${estadoClass(t.estado)}">${estadoClass(t.estado)==='asistio'?'Atendido':esc(t.estado||'Confirmado')}</span>
-    </button>
-  `).join('') || '<div class="empty-state">No tenés pacientes agendados para esta fecha.</div>';
+  $('profAgendaStats').innerHTML=`
+    <div class="stat-card"><b>${turnos.length}</b><span>Pacientes del día</span></div>
+    <div class="stat-card"><b>${enEspera}</b><span>En sala de espera</span></div>
+    <div class="stat-card"><b>${atendidos}</b><span>Atendidos</span></div>
+  `;
+
+  $('profAgendaBody').innerHTML=turnos.map(t=>{
+    const clase=estadoClass(t.estado);
+    const estadoTexto=clase==='espera'?'En sala de espera':clase==='asistio'?'Atendido':esc(t.estado||'Confirmado');
+    return `
+      <button class="prof-turno-card ${clase}" onclick="abrirTurnoProfesional(${t.id})">
+        <div>
+          <b>${esc(String(t.hora).slice(0,5))} hs · ${esc(t.paciente_nombre)}</b>
+          <span>${esc(t.especialidad)} · DNI: ${esc(t.dni||'No informado')}</span>
+          ${clase==='espera'?'<span><b style="color:#9a3412">El paciente ya está en el centro esperando ser atendido.</b></span>':''}
+        </div>
+        <span class="pill ${clase}">${estadoTexto}</span>
+      </button>
+    `;
+  }).join('') || '<div class="empty-state">No tenés pacientes agendados para esta fecha.</div>';
 }
 
 function abrirTurnoProfesional(id){
@@ -458,9 +502,12 @@ function abrirTurnoProfesional(id){
 }
 
 async function marcarTurnoAtendido(id){
+  const profesionalSesion=localStorage.getItem('elica_profesional_nombre')||'';
+
   const {error}=await sb.from('turnos')
     .update({estado:'atendido'})
-    .eq('id',id);
+    .eq('id',id)
+    .eq('profesional',profesionalSesion);
 
   if(error){
     alert('No se pudo marcar como atendido: '+error.message);
@@ -475,7 +522,7 @@ async function marcarTurnoAtendido(id){
 async function agenda(){if(!$('calendarWrap')&&!$('agendaBody'))return; guard(); prepararBuscadorAgenda(); await cargarFiltroProfesionales(); const desde=$('agendaDesde')?.value||today(); const vista=$('agendaVista')?.value||'drapp'; const profesional=$('agendaProfesional')?.value||''; const hasta=(vista==='dia'||vista==='drapp')?addDays(desde,1):addDays(desde,7); let q=sb.from('turnos').select('*').gte('fecha',desde).lt('fecha',hasta).neq('estado','cancelado').order('fecha',{ascending:true}).order('hora',{ascending:true}); if(profesional) q=q.eq('profesional',profesional); const {data,error}=await q; if(error){show('msg',error.message,'error');return} renderAgenda(data||[],desde,vista);}
 async function cargarFiltroProfesionales(){const sel=$('agendaProfesional'); if(!sel||sel.dataset.loaded)return; (await getProfesionales()).forEach(p=>sel.add(new Option(p.nombre,p.nombre))); sel.dataset.loaded='1';}
 function esc(s){return String(s||'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}
-function estadoClass(estado){estado=String(estado||'confirmado').toLowerCase(); if(estado.includes('cancel'))return 'cancelado'; if(estado.includes('aus'))return 'ausente'; if(estado.includes('asist')||estado.includes('atend'))return 'asistio'; return 'confirmado';}
+function estadoClass(estado){estado=String(estado||'confirmado').toLowerCase(); if(estado.includes('cancel'))return 'cancelado'; if(estado.includes('espera')||estado.includes('sala'))return 'espera'; if(estado.includes('aus'))return 'ausente'; if(estado.includes('asist')||estado.includes('atend'))return 'asistio'; return 'confirmado';}
 function actualizarStats(turnos){const box=$('agendaStats'); if(!box)return; const total=turnos.length; const profs=new Set(turnos.map(t=>t.profesional).filter(Boolean)).size; const esp=new Set(turnos.map(t=>t.especialidad).filter(Boolean)).size; box.innerHTML=`<div class="stat-card"><b>${total}</b><span>Turnos del día</span></div><div class="stat-card"><b>${profs}</b><span>Profesionales con turnos</span></div><div class="stat-card"><b>${esp}</b><span>Especialidades</span></div>`;}
 function abrirTurno(id){
   const raw=sessionStorage.getItem('turnosAgenda')||'[]';
@@ -483,7 +530,7 @@ function abrirTurno(id){
   const t=turnos.find(x=>String(x.id)===String(id));
   if(!t)return;
   $('modalPaciente').textContent=t.paciente_nombre||'Paciente';
-  $('modalContenido').innerHTML=`<div class="modal-grid"><p><b>Fecha:</b> ${esc(t.fecha)}</p><p><b>Hora:</b> ${esc(String(t.hora).slice(0,5))} hs</p><p><b>Profesional:</b> ${esc(t.profesional)}</p><p><b>Especialidad:</b> ${esc(t.especialidad)}</p><p><b>Teléfono:</b> ${esc(t.telefono)}</p><p><b>DNI:</b> ${esc(t.dni)}</p><p><b>Obra social:</b> ${esc(t.obra_social)}</p><p><b>Estado:</b> ${esc(t.estado||'confirmado')}</p></div><hr><p><b>Motivo:</b><br>${esc(t.motivo_consulta||'Sin motivo cargado')}</p><div class="modal-actions"><button class="btn ok" onclick="abrirHistoriaDesdeTurno(${t.id})">Abrir historia clínica</button><button class="btn secondary" onclick="cancelarTurnoCentro(${t.id})">Cancelar turno</button><button class="btn danger" onclick="eliminarTurnoCentro(${t.id})">Eliminar turno</button><button class="btn secondary" onclick="cerrarModal()">Cerrar</button></div><div id="historiaAgendaBox"></div>`;
+  $('modalContenido').innerHTML=`<div class="modal-grid"><p><b>Fecha:</b> ${esc(t.fecha)}</p><p><b>Hora:</b> ${esc(String(t.hora).slice(0,5))} hs</p><p><b>Profesional:</b> ${esc(t.profesional)}</p><p><b>Especialidad:</b> ${esc(t.especialidad)}</p><p><b>Teléfono:</b> ${esc(t.telefono)}</p><p><b>DNI:</b> ${esc(t.dni)}</p><p><b>Obra social:</b> ${esc(t.obra_social)}</p><p><b>Estado:</b> ${esc(t.estado||'confirmado')}</p></div><hr><p><b>Motivo:</b><br>${esc(t.motivo_consulta||'Sin motivo cargado')}</p><div class="modal-actions"><button class="btn ok" onclick="abrirHistoriaDesdeTurno(${t.id})">Abrir historia clínica</button><button class="btn secondary" onclick="marcarTurnoEnEspera(${t.id})">Paciente llegó / sala de espera</button><button class="btn secondary" onclick="cancelarTurnoCentro(${t.id})">Cancelar turno</button><button class="btn danger" onclick="eliminarTurnoCentro(${t.id})">Eliminar turno</button><button class="btn secondary" onclick="cerrarModal()">Cerrar</button></div><div id="historiaAgendaBox"></div>`;
   $('turnoModal').classList.remove('hidden');
 }
 async function obtenerOCrearPacienteDesdeTurno(t){
@@ -550,6 +597,21 @@ async function guardarHistoriaAgenda(pacienteId,turnoId){
   await abrirHistoriaDesdeTurno(turnoId);
 }
 function cerrarModal(){ $('turnoModal')?.classList.add('hidden'); }
+async function marcarTurnoEnEspera(id){
+  const {error}=await sb.from('turnos')
+    .update({estado:'en_espera'})
+    .eq('id',id);
+
+  if(error){
+    alert('No se pudo marcar sala de espera: '+error.message);
+    return;
+  }
+
+  cerrarModal();
+  await agenda();
+  show('msg','Paciente marcado en sala de espera. El profesional ya puede verlo en su agenda.','success');
+}
+
 async function cancelarTurnoCentro(id){
   if(!confirm('¿Cancelar este turno? El horario quedará libre para otra reserva.')) return;
   const {error}=await sb.from('turnos').update({estado:'cancelado',cancelado_en:new Date().toISOString(),cancelado_por:'centro',motivo_cancelacion:'Cancelado desde agenda'}).eq('id',id);
@@ -954,7 +1016,7 @@ function mostrarTabHC(tab){
 }
 async function loadHistoriaClinicaFull(){
   if(!$('hcNombre')) return;
-  guard();
+  guardCentroOProfesional();
   const params=new URLSearchParams(location.search);
   const id=params.get('id');
   const turnoId=params.get('turno');
